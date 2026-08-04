@@ -25,6 +25,50 @@ namespace AstronautUnlocker
     // ================================================================
     //  AstronautMod v3.6
     //
+    //  v3.6.7 changes:
+    //    - Fix: Parts count = 0 ("亡魂" — ghost parts) when returning to build
+    //      ROOT CAUSE: After GameManager.LoadSave, AstronautState.main.state's
+    //      crew_World, eva, or astronauts list may be null. When Seat.OnStart
+    //      calls GetAstronautState(), Enumerable.Any() throws
+    //      ArgumentNullException on the null list. This exception bubbles up
+    //      through Seat.OnStart -> CrewModule.Initialize ->
+    //      Part.InitializePart -> PartsLoader.CreateParts, ABORTING part
+    //      spawning entirely — resulting in 0 parts loaded.
+    //      Fix: Added EnsureAllStateLists() to initialize all lists before
+    //      GetAstronautState is called. Called in Seat.OnStart Prefix,
+    //      SafeGetAstronautState, LoadSave Postfix, and scene load callbacks.
+    //      Also changed Seat.OnStart catch block to return false (skip original)
+    //      instead of true (fall back to original which would also crash).
+    //
+    //  v3.6.6 changes:
+    //    - Fix: Parts with astronauts STILL disappear (v3.6.5 Postfix didn't work)
+    //      Changed from Postfix to Prefix: completely replaces OnSeatChange,
+    //      replicating all logic (hasControl, hatch, mass) EXCEPT interior hiding.
+    //      Also added comprehensive visibility scan: checks part GameObject,
+    //      interior, and all MeshRenderers/SkinnedMeshRenderers in part hierarchy.
+    //
+    //  v3.6.5 changes:
+    //    - Fix: Parts with astronauts still disappear when returning to build
+    //      Root cause: CrewModule.Initialize registers OnSeatChange as the
+    //      OnChange handler for seat astronaut references. When build scene
+    //      loads and seat values are restored from save data, the event
+    //      system fires OnSeatChange, which hides the interior GameObject.
+    //      On PC, interior contains the part's visual mesh.
+    //      Fix: Harmony Postfix on OnSeatChange re-enables interior after
+    //      the original method hides it. Also activated in RefreshCrewModuleVisuals.
+    //
+    //  v3.6.4 changes:
+    //    - Fix: Dismissed astronaut still visible in list (rendering issue)
+    //      Root cause: ShowMenu called from within confirmation callback
+    //      didn't work because menus weren't fully closed yet.
+    //      Fix: Use CloseMode.Stack on confirmation + delayed ShowMenu
+    //      on next frame via UpdateDriver.ScheduleMenuRefresh()
+    //    - Fix: Parts with astronauts disappear when returning to build
+    //      Root cause: OnSeatChange hides interior GameObject when
+    //      astronaut is present. On PC, interior contains the part mesh.
+    //      Fix: Don't call OnSeatChange; manually update hasControl and
+    //      mass without toggling interior/hatch visibility.
+    //
     //  v3.6 changes:
     //    - Renamed mod to "AstronautMod"
     //    - Description: "Enables the native astronaut/crew system on PC."
@@ -72,7 +116,7 @@ namespace AstronautUnlocker
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.6.1";
+        public override string ModVersion => "3.6.7";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -81,7 +125,7 @@ namespace AstronautUnlocker
             HarmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
             ModifyDisableParts();
             CreatePersistentAstronautState();
-            Debug.Log("[AstronautMod] v3.6.1 loaded");
+            Debug.Log("[AstronautMod] v3.6.7 loaded");
         }
 
         public override void Load()
@@ -102,7 +146,9 @@ namespace AstronautUnlocker
             {
                 EnsureAstronautState();
                 EnsureCrewBuildList();
+                EnsureAllStateLists(); // v3.6.7
                 LoadAstronautDataFromCache();
+                EnsureAllStateLists(); // v3.6.7: Re-check after load
                 EnsureAstronautMenuInstance();
                 ActivateAstronautsButton();
             }
@@ -118,6 +164,7 @@ namespace AstronautUnlocker
             {
                 EnsureAstronautState();
                 EnsureAstronautMenuInstance();
+                EnsureAllStateLists(); // v3.6.7: Prevent ArgumentNullException in GetAstronautState
                 // Clear crew_Build for fresh build session
                 if (AstronautState.main.crew_Build == null)
                     AstronautState.main.crew_Build = new List<string>();
@@ -125,8 +172,11 @@ namespace AstronautUnlocker
                     AstronautState.main.crew_Build.Clear();
                 // Build scene doesn't natively load astronaut data — load from cache
                 LoadAstronautDataFromCache();
+                EnsureAllStateLists(); // v3.6.7: Re-check after LoadAstronautDataFromCache
                 Debug.Log("[AstronautUnlocker] Build scene ready, astronauts: " +
                     (AstronautState.main.state?.astronauts?.Count ?? 0));
+                // v3.6.4: Schedule a delayed refresh of CrewModule logic (hasControl/mass)
+                UpdateDriver.ScheduleCrewModuleRefresh();
             }
             catch (Exception e)
             {
@@ -366,6 +416,28 @@ namespace AstronautUnlocker
                 AstronautState.main.crew_Build = new List<string>();
         }
 
+        // v3.6.7: Ensure ALL state lists are non-null.
+        // GetAstronautState calls Enumerable.Any() on crew_Build, crew_World,
+        // eva, and astronauts. If any is null, it throws ArgumentNullException
+        // which aborts Part.InitializePart and causes 0 parts to load.
+        public static void EnsureAllStateLists()
+        {
+            if (AstronautState.main == null) return;
+            if (AstronautState.main.crew_Build == null)
+                AstronautState.main.crew_Build = new List<string>();
+            if (AstronautState.main.state == null)
+                AstronautState.main.state = new WorldSave.Astronauts();
+            if (AstronautState.main.state.crew_World == null)
+                AstronautState.main.state.crew_World =
+                    new List<WorldSave.Astronauts.Crew_World>();
+            if (AstronautState.main.state.eva == null)
+                AstronautState.main.state.eva =
+                    new List<WorldSave.Astronauts.EVA>();
+            if (AstronautState.main.state.astronauts == null)
+                AstronautState.main.state.astronauts =
+                    new List<WorldSave.Astronauts.Data>();
+        }
+
         // --- Load astronaut data from SavingCache ---
         // Hub scene does this via HubManager.LoadPersistent(), but Build scene
         // has no equivalent. This ensures astronauts created in Hub are available
@@ -432,39 +504,53 @@ namespace AstronautUnlocker
 
                 hubHolder = ModGUIBuilder.CreateHolder(ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_HubBtn");
 
-                // v3.6: Dynamically find challengesButton (achievements) and place next to it
-                float posX = -350f, posY = -150f; // Default fallback
+                // v3.6: Find resumeGameButton and place Astronauts button above it
+                float posX = 0f, posY = 100f; // Default fallback
                 if (HubManager.main != null)
                 {
-                    FieldInfo chField = typeof(HubManager).GetField("challengesButton",
+                    // Try resumeGameButton (type SFS.UI.Button, a MonoBehaviour)
+                    FieldInfo resumeField = typeof(HubManager).GetField("resumeGameButton",
                         BindingFlags.Public | BindingFlags.Instance);
-                    if (chField != null)
+                    if (resumeField != null)
                     {
-                        GameObject challengesBtn = chField.GetValue(HubManager.main) as GameObject;
-                        if (challengesBtn != null && challengesBtn.activeInHierarchy)
+                        object resumeBtn = resumeField.GetValue(HubManager.main);
+                        if (resumeBtn != null)
                         {
-                            RectTransform chRT = challengesBtn.GetComponent<RectTransform>();
-                            if (chRT != null)
+                            // SFS.UI.Button extends MonoBehaviour, so it has gameObject/transform
+                            GameObject resumeGO = (resumeBtn as MonoBehaviour)?.gameObject;
+                            if (resumeGO != null && resumeGO.activeInHierarchy)
                             {
-                                // Re-parent our holder to the same parent as challengesButton
-                                Transform chParent = challengesBtn.transform.parent;
-                                if (chParent != null)
+                                RectTransform resumeRT = resumeGO.GetComponent<RectTransform>();
+                                if (resumeRT != null)
                                 {
-                                    hubHolder.transform.SetParent(chParent, false);
+                                    // Re-parent our holder to the same parent as resumeGameButton
+                                    Transform resumeParent = resumeGO.transform.parent;
+                                    if (resumeParent != null)
+                                    {
+                                        hubHolder.transform.SetParent(resumeParent, false);
+                                    }
+                                    // Place directly above resumeGameButton
+                                    Vector2 resumePos = resumeRT.anchoredPosition;
+                                    float resumeHeight = resumeRT.rect.height > 0 ? resumeRT.rect.height : 50f;
+                                    posX = resumePos.x;
+                                    posY = resumePos.y + resumeHeight + 20f;
+                                    Debug.Log("[AstronautUnlocker] resumeGameButton found at " + resumePos +
+                                        " height=" + resumeHeight + ", placing Astronauts at (" + posX + ", " + posY + ")");
                                 }
-                                // Place to the right and above challengesButton
-                                Vector2 chPos = chRT.anchoredPosition;
-                                float chWidth = chRT.rect.width > 0 ? chRT.rect.width : 200f;
-                                posX = chPos.x + chWidth + 20f;
-                                posY = chPos.y + 80f; // Move up above the achievements button
-                                Debug.Log("[AstronautUnlocker] challengesButton found at " + chPos +
-                                    " width=" + chWidth + ", placing Astronauts at (" + posX + ", " + posY + ")");
+                            }
+                            else
+                            {
+                                Debug.Log("[AstronautUnlocker] resumeGameButton gameObject is null or inactive");
                             }
                         }
                         else
                         {
-                            Debug.Log("[AstronautUnlocker] challengesButton is null or inactive, using default position");
+                            Debug.Log("[AstronautUnlocker] resumeGameButton is null, using default position");
                         }
+                    }
+                    else
+                    {
+                        Debug.Log("[AstronautUnlocker] resumeGameButton field not found, using default position");
                     }
                 }
 
@@ -591,6 +677,31 @@ namespace AstronautUnlocker
         {
             try
             {
+                // v3.6.7: CRITICAL — ensure all state lists are non-null
+                // GetAstronautState accesses crew_Build, crew_World, eva, astronauts
+                // via Enumerable.Any(). If any list is null, it throws
+                // ArgumentNullException, which bubbles up through Seat.OnStart ->
+                // CrewModule.Initialize -> Part.InitializePart -> PartsLoader.CreateParts
+                // and ABORTS part spawning, resulting in 0 parts loaded.
+                if (AstronautState.main != null)
+                {
+                    if (AstronautState.main.crew_Build == null)
+                        AstronautState.main.crew_Build = new List<string>();
+
+                    if (AstronautState.main.state != null)
+                    {
+                        if (AstronautState.main.state.crew_World == null)
+                            AstronautState.main.state.crew_World =
+                                new List<WorldSave.Astronauts.Crew_World>();
+                        if (AstronautState.main.state.eva == null)
+                            AstronautState.main.state.eva =
+                                new List<WorldSave.Astronauts.EVA>();
+                        if (AstronautState.main.state.astronauts == null)
+                            AstronautState.main.state.astronauts =
+                                new List<WorldSave.Astronauts.Data>();
+                    }
+                }
+
                 // Safety net: restore any astronauts still missing after LoadSave
                 if (backupAstronauts != null && backupAstronauts.Count > 0)
                 {
@@ -750,7 +861,24 @@ namespace AstronautUnlocker
                     return false; // Don't let original clear the seat
                 }
 
-                AstronautState.State state = AstronautState.main.GetAstronautState(astronautName);
+                // v3.6.7: Ensure all lists are non-null before calling GetAstronautState.
+                // GetAstronautState uses Enumerable.Any() on crew_Build, crew_World,
+                // eva, and astronauts lists. If any is null, it throws
+                // ArgumentNullException which aborts Part.InitializePart and
+                // causes 0 parts to load.
+                if (AstronautState.main.crew_Build == null)
+                    AstronautState.main.crew_Build = new List<string>();
+                if (AstronautState.main.state.crew_World == null)
+                    AstronautState.main.state.crew_World =
+                        new List<WorldSave.Astronauts.Crew_World>();
+                if (AstronautState.main.state.eva == null)
+                    AstronautState.main.state.eva =
+                        new List<WorldSave.Astronauts.EVA>();
+                if (AstronautState.main.state.astronauts == null)
+                    AstronautState.main.state.astronauts =
+                        new List<WorldSave.Astronauts.Data>();
+
+                AstronautState.State state = NativeAstronautUI.SafeGetAstronautState(astronautName);
 
                 if (state == AstronautState.State.Available)
                 {
@@ -805,7 +933,9 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 Debug.Log("[AstronautUnlocker] Seat.OnStart prefix error: " + e);
-                return true; // Fall back to original on error
+                // v3.6.7: Return false instead of true — falling back to original
+                // OnStart would also crash on null lists, aborting part creation.
+                return false;
             }
         }
     }
@@ -947,6 +1077,104 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 Debug.Log("[AstronautUnlocker] OpenPartMenu_Seats prefix error: " + e);
+            }
+        }
+    }
+
+    // ================================================================
+    //  v3.6.6: Patch CrewModule.OnSeatChange — completely replace to
+    //  prevent interior hiding on PC.
+    //
+    //  ROOT CAUSE: CrewModule.Initialize registers OnSeatChange as the
+    //  OnChange handler for each seat's astronaut reference. When the
+    //  build scene loads and seat values are set from save data, the
+    //  event fires OnSeatChange, which calls:
+    //    interior.SetActive(!hasControl)
+    //  When an astronaut is present, hasControl=true, so interior is
+    //  hidden. On PC, the interior GameObject contains the part's
+    //  visual mesh, causing the entire part to disappear.
+    //
+    //  v3.6.5 Postfix approach didn't work — possibly because the event
+    //  fires multiple times or interior is null while another mechanism
+    //  hides the part.
+    //
+    //  v3.6.6 Fix: Prefix completely replaces OnSeatChange. We replicate
+    //  all the original logic (hasControl, hatch, mass) EXCEPT we never
+    //  hide the interior. Additionally, we proactively ensure interior
+    //  is active and scan all MeshRenderers in the part hierarchy.
+    // ================================================================
+    [HarmonyPatch(typeof(CrewModule), "OnSeatChange")]
+    public class Patch_CrewModule_OnSeatChange
+    {
+        static bool Prefix(CrewModule __instance)
+        {
+            try
+            {
+                var tr = Traverse.Create(__instance);
+
+                // --- Replicate OnSeatChange logic (without hiding interior) ---
+
+                bool disableAstronauts = DevSettings.DisableAstronauts;
+
+                // Check if any seat has astronaut
+                bool anyHasAstronaut = false;
+                if (__instance.seats != null)
+                {
+                    foreach (var seat in __instance.seats)
+                    {
+                        if (seat.HasAstronaut) { anyHasAstronaut = true; break; }
+                    }
+                }
+
+                var needsCrewRef = tr.Field("needsCrewForControl")
+                    .GetValue<SFS.Variables.Bool_Reference>();
+                bool needsCrew = needsCrewRef != null && needsCrewRef.Value;
+
+                // Original logic: hasControl = disableAstronauts || anyHasAstronaut || !needsCrew
+                bool hasControl = disableAstronauts || anyHasAstronaut || !needsCrew;
+
+                // Update hasControl reference
+                var hasControlRef = tr.Field("hasControl")
+                    .GetValue<SFS.Variables.Bool_Reference>();
+                if (hasControlRef != null)
+                    hasControlRef.Value = hasControl;
+
+                // Toggle hatch (original: hatch.SetActive(hasControl))
+                var hatch = tr.Field("hatch").GetValue<GameObject>();
+                if (hatch != null)
+                    hatch.SetActive(hasControl);
+
+                // --- CRITICAL DIFFERENCE: do NOT hide interior ---
+                // Original: interior.SetActive(!hasControl)
+                // We skip this entirely AND proactively ensure interior is active
+                var interior = tr.Field("interior").GetValue<GameObject>();
+                if (interior != null && !interior.activeSelf)
+                {
+                    interior.SetActive(true);
+                    Debug.Log("[AstronautUnlocker] OnSeatChange Prefix: re-enabled interior on " +
+                        __instance.gameObject.name);
+                }
+
+                // Update part mass: baseMass + 0.2 per seated astronaut
+                float baseMass = tr.Field("baseMass").GetValue<float>();
+                float seatMass = 0f;
+                if (__instance.seats != null)
+                {
+                    foreach (var seat in __instance.seats)
+                    {
+                        if (seat.HasAstronaut) seatMass += 0.2f;
+                    }
+                }
+                SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
+                if (part != null && part.mass != null)
+                    part.mass.Value = baseMass + seatMass;
+
+                return false; // Skip original OnSeatChange entirely
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautUnlocker] OnSeatChange Prefix error: " + e);
+                return true; // Fall back to original on error
             }
         }
     }
@@ -1255,10 +1483,27 @@ namespace AstronautUnlocker
 
     // ================================================================
     //  v3.4: UpdateDriver — runs UpdatePlantFlagButton each frame
+    //  v3.6.4: Also handles delayed CrewModule logic refresh and
+    //          delayed menu refresh after astronaut discharge
     // ================================================================
     public class UpdateDriver : MonoBehaviour
     {
         private float timer;
+        private static float crewRefreshTimer = -1f;
+        private static bool pendingMenuRefresh = false;
+
+        public static void ScheduleCrewModuleRefresh()
+        {
+            crewRefreshTimer = 1.0f; // Wait 1 second for parts to fully initialize
+        }
+
+        // v3.6.4: Called from AskFire callback to schedule a menu refresh
+        // on the next frame (after CloseMode.Stack has finished closing menus)
+        public static void ScheduleMenuRefresh()
+        {
+            pendingMenuRefresh = true;
+        }
+
         private void Update()
         {
             timer += Time.deltaTime;
@@ -1266,6 +1511,126 @@ namespace AstronautUnlocker
             {
                 timer = 0f;
                 PlantFlagButtonHelper.Update();
+            }
+
+            // v3.6.4: Delayed menu refresh after astronaut discharge
+            if (pendingMenuRefresh)
+            {
+                pendingMenuRefresh = false;
+                NativeAstronautUI.ShowMenu(null, null, CloseMode.None);
+            }
+
+            // v3.6.4: Delayed CrewModule logic refresh
+            if (crewRefreshTimer > 0f)
+            {
+                crewRefreshTimer -= Time.deltaTime;
+                if (crewRefreshTimer <= 0f)
+                {
+                    crewRefreshTimer = -1f;
+                    RefreshCrewModuleVisuals();
+                }
+            }
+        }
+
+        // v3.6.6: Comprehensive visibility fix — ensures interior is active,
+        // part GameObject is active, and all MeshRenderers are enabled.
+        // This catches cases where OnSeatChange or other mechanisms hide
+        // the part's visual mesh on PC.
+        private static void RefreshCrewModuleVisuals()
+        {
+            try
+            {
+                CrewModule[] modules = UnityEngine.Object.FindObjectsOfType<CrewModule>(includeInactive: true);
+                int refreshed = 0;
+                foreach (CrewModule cm in modules)
+                {
+                    try
+                    {
+                        var tr = Traverse.Create(cm);
+
+                        // Update hasControl
+                        bool anyHasAstronaut = false;
+                        if (cm.seats != null)
+                        {
+                            foreach (var seat in cm.seats)
+                            {
+                                if (seat.HasAstronaut) { anyHasAstronaut = true; break; }
+                            }
+                        }
+                        var needsCrewRef = tr.Field("needsCrewForControl")
+                            .GetValue<SFS.Variables.Bool_Reference>();
+                        bool needsCrew = needsCrewRef != null && needsCrewRef.Value;
+                        bool hasControl = anyHasAstronaut || !needsCrew;
+
+                        var hasControlRef = tr.Field("hasControl")
+                            .GetValue<SFS.Variables.Bool_Reference>();
+                        if (hasControlRef != null)
+                            hasControlRef.Value = hasControl;
+
+                        // Update part mass
+                        float baseMass = tr.Field("baseMass").GetValue<float>();
+                        float seatMass = 0f;
+                        if (cm.seats != null)
+                            foreach (var seat in cm.seats)
+                                if (seat.HasAstronaut) seatMass += 0.2f;
+                        SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
+                        if (part != null && part.mass != null)
+                            part.mass.Value = baseMass + seatMass;
+
+                        // v3.6.6: Ensure interior is active
+                        var interior = tr.Field("interior").GetValue<GameObject>();
+                        if (interior != null && !interior.activeSelf)
+                        {
+                            interior.SetActive(true);
+                            Debug.Log("[AstronautUnlocker] Refresh: re-enabled interior on " +
+                                cm.gameObject.name);
+                        }
+
+                        // v3.6.6: Ensure part's GameObject is active
+                        if (part != null && part.gameObject != null && !part.gameObject.activeSelf)
+                        {
+                            part.gameObject.SetActive(true);
+                            Debug.Log("[AstronautUnlocker] Refresh: re-enabled part GameObject " +
+                                part.gameObject.name);
+                        }
+
+                        // v3.6.6: Enable all MeshRenderers in the part hierarchy
+                        // (catches cases where the mesh renderer is disabled
+                        // rather than the GameObject being inactive)
+                        if (part != null && part.gameObject != null)
+                        {
+                            MeshRenderer[] renderers = part.GetComponentsInChildren<MeshRenderer>(true);
+                            foreach (var mr in renderers)
+                            {
+                                if (!mr.enabled)
+                                {
+                                    mr.enabled = true;
+                                    Debug.Log("[AstronautUnlocker] Refresh: re-enabled MeshRenderer on " +
+                                        mr.gameObject.name);
+                                }
+                            }
+                            SkinnedMeshRenderer[] skinned = part.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                            foreach (var smr in skinned)
+                            {
+                                if (!smr.enabled)
+                                {
+                                    smr.enabled = true;
+                                    Debug.Log("[AstronautUnlocker] Refresh: re-enabled SkinnedMeshRenderer on " +
+                                        smr.gameObject.name);
+                                }
+                            }
+                        }
+
+                        refreshed++;
+                    }
+                    catch { }
+                }
+                if (refreshed > 0)
+                    Debug.Log("[AstronautUnlocker] Refreshed " + refreshed + " CrewModules (visibility check)");
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautUnlocker] RefreshCrewModuleVisuals error: " + e);
             }
         }
     }
@@ -1280,6 +1645,12 @@ namespace AstronautUnlocker
         private static Action pendingRedraw;
 
         public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat)
+        {
+            ShowMenu(seat, redrawSeat, CloseMode.Current);
+        }
+
+        // v3.6.4: closeMode parameter used by delayed refresh (CloseMode.None)
+        public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat, CloseMode closeMode)
         {
             pendingSeat = seat;
             pendingRedraw = redrawSeat;
@@ -1311,13 +1682,13 @@ namespace AstronautUnlocker
             {
                 var sorted = astronauts.ToList();
                 sorted.Sort((a, b) =>
-                    ((int)AstronautState.main.GetAstronautState(a.astronautName))
-                    .CompareTo((int)AstronautState.main.GetAstronautState(b.astronautName)));
+                    ((int)SafeGetAstronautState(a.astronautName))
+                    .CompareTo((int)SafeGetAstronautState(b.astronautName)));
 
                 foreach (var astro in sorted)
                 {
                     string name = astro.astronautName;
-                    AstronautState.State st = AstronautState.main.GetAstronautState(name);
+                    AstronautState.State st = SafeGetAstronautState(name);
                     string statusText = AstronautState.main.GetAstronautStateText(st, assignMode);
 
                     if (assignMode)
@@ -1377,7 +1748,7 @@ namespace AstronautUnlocker
                 () => { },
                 CloseMode.Current));
 
-            MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
+            MenuGenerator.OpenMenu(CancelButton.Close, closeMode, elements.ToArray());
         }
 
         private static void AssignToSeat(string name)
@@ -1430,17 +1801,47 @@ namespace AstronautUnlocker
             try
             {
                 MenuGenerator.OpenConfirmation(
-                    CloseMode.Current,
+                    CloseMode.Stack,
                     () => "Discharge " + name + "?",
                     () => "Discharge",
                     delegate
                     {
                         AstronautState.main.FireAstronaut(name);
+                        Debug.Log("[AstronautUnlocker] Astronaut discharged: " + name);
+                        // v3.6.4: Use delayed refresh — calling ShowMenu from within
+                        // the confirmation callback doesn't work because the menu
+                        // system hasn't finished closing yet. Set a flag and let
+                        // UpdateDriver open the fresh menu on the next frame.
+                        UpdateDriver.ScheduleMenuRefresh();
                     });
             }
             catch (Exception e)
             {
                 Debug.Log("[AstronautUnlocker] Fire dialog error: " + e);
+            }
+        }
+
+        // v3.6.2: Safe wrapper for GetAstronautState — prevents NullReferenceException
+        // when GameManager.main is non-null but AstronautManager.main is null
+        // (happens during World->Build scene transition after astronaut death)
+        // v3.6.7: Also ensures all state lists are non-null before calling
+        public static AstronautState.State SafeGetAstronautState(string astronautName)
+        {
+            try
+            {
+                AstronautUnlockerMod.EnsureAllStateLists();
+                return AstronautState.main.GetAstronautState(astronautName);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautUnlocker] SafeGetAstronautState error for " +
+                    astronautName + ": " + e.Message);
+                // If we can't determine state, check if astronaut is alive in data
+                var data = AstronautState.main?.state?.astronauts?
+                    .FirstOrDefault(a => a.astronautName == astronautName);
+                if (data != null && !data.alive)
+                    return AstronautState.State.Deceased;
+                return AstronautState.State.Available;
             }
         }
     }

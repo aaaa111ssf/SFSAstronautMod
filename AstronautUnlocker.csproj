@@ -7,7 +7,7 @@
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <DllDir>/data/user/work/pc_reverse/PCSFS_Reverse/original_dlls</DllDir>
+    <DllDir>/tmp/pc_reverse/PCSFS_Reverse/original_dlls</DllDir>
   </PropertyGroup>
 
   <ItemGroup>
