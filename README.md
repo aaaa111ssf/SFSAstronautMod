@@ -45,6 +45,24 @@
 - "PlantFlag called by XXX, flags now: N" = 插旗成功
 - "Seat.OnStart: XXX is CrewWorld, seat PRESERVED" = 座位已保留
 ### 更新日志
+
+【v3.6.7 更新内容】
+
+修复：返回建造场景时部件数量为0（幽灵部件）
+
+【v3.6.6 更新内容】
+
+修复：带有航天员的部件仍然消失（v3.6.5 后缀修复无效）
+
+【v3.6.5 更新内容】
+
+修复：返回建造场景时带有航天员的部件仍会消失
+
+【v3.6.4 更新内容】
+
+修复：已解雇的航天员在列表中仍然可见（渲染问题）
+修复：返回建造场景时带有航天员的部件消失
+
 【v3.6 更新内容】
 1. 模组重命名为 "AstronautMod"，简介更新为 "Enables the native astronaut/crew system on PC."
 2. Hub "Astronauts" 按钮动态定位到成就按钮旁边
