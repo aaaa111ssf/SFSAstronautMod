@@ -46,6 +46,13 @@
 - "Seat.OnStart: XXX is CrewWorld, seat PRESERVED" = 座位已保留
 ### 更新日志
 
+【v3.7重大更新】
+严重修复：进入建造场景时的渲染泄漏
+修复：宇航员EVA无浮力 添加Water_Astronaut组件
+修改：航天中心hub宇航员按钮
+新增：宇航员传送——支持Astronaut_EVA传送
+新增：宇航员仪表盘——显示速度、高度、燃料
+
 【v3.6.7 更新内容】
 
 修复：返回建造场景时部件数量为0（幽灵部件）
