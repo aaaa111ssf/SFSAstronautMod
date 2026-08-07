@@ -7,7 +7,9 @@
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <DllDir>/data/user/work/game_dlls</DllDir>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <DllDir>/workspace/game_dlls</DllDir>
   </PropertyGroup>
 
   <ItemGroup>
