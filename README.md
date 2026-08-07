@@ -44,7 +44,14 @@
 - "Plant Flag button created (EVA active)" = 插旗按钮已显示
 - "PlantFlag called by XXX, flags now: N" = 插旗成功
 - "Seat.OnStart: XXX is CrewWorld, seat PRESERVED" = 座位已保留
-### 更新日志
+   
+### 更新日志  
+  
+【v3.38更新】  
+修复：传送功能在禁用作弊时仍能使用 现在已禁用  
+修复：宇航员可以在气态行星上行走、插旗 添加检查 现在禁止在无地形行星出舱和插旗  
+修复：现在宇航员的名字支持所有 Unicode 字符  
+优化：精简代码  
   
 【v3.7重大更新】
 严重修复：进入建造场景时的渲染泄漏  
