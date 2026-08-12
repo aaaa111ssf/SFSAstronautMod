@@ -33,7 +33,7 @@ namespace AstronautUnlocker
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.38";
+        public override string ModVersion => "3.7.2";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -1097,6 +1097,21 @@ namespace AstronautUnlocker
         }
     }
 
+    // EndMissionMenu checks HasCrew: if true, forces destroy flow (no recovery).
+    // The mod enables astronauts on PC, so seats have astronaut names, causing
+    // HasCrew=true and preventing recovery. Patch it to return false so the
+    // normal recover/destroy flow is used. Recovery's Complete() still exits
+    // all seats properly.
+    [HarmonyPatch(typeof(CrewModule), "get_HasCrew")]
+    public class Patch_CrewModule_HasCrew
+    {
+        static bool Prefix(ref bool __result)
+        {
+            __result = false;
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(Rocket), "UseParts")]
     public class Patch_Rocket_UseParts
     {
@@ -1107,35 +1122,20 @@ namespace AstronautUnlocker
             patchedParts.Clear();
         }
 
-        static bool Prefix(bool fromStaging, (Part, PolygonData)[] regions,
-            ref UsePartData[] __result)
+        static bool Prefix(bool fromStaging, (Part, PolygonData)[] regions)
         {
             try
             {
                 if (regions == null || regions.Length == 0)
-                {
-                    __result = new UsePartData[0];
-                    return false;
-                }
+                    return true; // Let original handle empty case
 
-                int listenersAdded = 0;
-                int partsSkipped = 0;
                 foreach (var region in regions)
                 {
                     Part part = region.Item1;
-                    if (part == null) { partsSkipped++; continue; }
-                    if (part.onPartUsed == null) { partsSkipped++; continue; }
+                    if (part == null || part.onPartUsed == null) continue;
 
-                    int eventCount = part.onPartUsed.GetPersistentEventCount();
                     int id = part.GetInstanceID();
-                    if (patchedParts.Contains(id))
-                    {
-                        Debug.Log("[AU] UseParts Prefix: Skipping '" + part.name +
-                            "' — already patched (id=" + id + ", persistentEvents=" + eventCount + ")");
-                        continue;
-                    }
-
-                    bool foundModule = false;
+                    if (patchedParts.Contains(id)) continue;
 
                     DetachModule[] detachModules = part.GetModules<DetachModule>();
                     if (detachModules != null && detachModules.Length > 0)
@@ -1150,8 +1150,6 @@ namespace AstronautUnlocker
                             }
                         });
                         patchedParts.Add(id);
-                        listenersAdded++;
-                        foundModule = true;
                     }
 
                     SplitModule[] splitModules = part.GetModules<SplitModule>();
@@ -1167,47 +1165,42 @@ namespace AstronautUnlocker
                             }
                         });
                         patchedParts.Add(id);
-                        listenersAdded++;
-                        foundModule = true;
-                    }
-
-                    if (!foundModule)
-                    {
-                        MonoBehaviour[] allModules = part.GetComponentsInChildren<MonoBehaviour>(includeInactive: true);
-                        string moduleNames = allModules != null
-                            ? string.Join(", ", System.Array.ConvertAll(allModules, m => m != null ? m.GetType().Name : "null"))
-                            : "none";
                     }
                 }
-
-                UsePartData.SharedData sharedData = new UsePartData.SharedData(fromStaging);
-                UsePartData[] array = new UsePartData[regions.Length];
-                for (int i = 0; i < regions.Length; i++)
-                {
-                    var (part, clickPolygon) = regions[i];
-                    array[i] = new UsePartData(sharedData, clickPolygon);
-                    if (part != null && part.onPartUsed != null)
-                    {
-                        part.onPartUsed.Invoke(array[i]);
-                    }
-                }
-                sharedData.onPostPartsActivation?.Invoke();
-                __result = array;
-                return false; // Skip original method
+                return true; // Let original method run — preserves recovery logic
             }
             catch (Exception e)
             {
                 Debug.Log("[AU] UseParts prefix error: " + e);
-                return true; // Fall back to original on error
+                return true;
             }
         }
 
-        static void Postfix(bool fromStaging, (Part, PolygonData)[] regions)
+        static void Postfix(bool fromStaging, (Part, PolygonData)[] regions,
+            ref UsePartData[] __result)
         {
             try
             {
-                if (fromStaging) return;
                 if (regions == null) return;
+
+                // PC parts have 0 persistent events, so original UseParts skipped them.
+                // Manually invoke onPartUsed for those parts using the result data.
+                if (__result != null && __result.Length == regions.Length)
+                {
+                    for (int i = 0; i < regions.Length; i++)
+                    {
+                        Part part = regions[i].Item1;
+                        if (part == null || part.onPartUsed == null) continue;
+
+                        int eventCount = part.onPartUsed.GetPersistentEventCount();
+                        if (eventCount == 0)
+                        {
+                            part.onPartUsed.Invoke(__result[i]);
+                        }
+                    }
+                }
+
+                if (fromStaging) return;
 
                 foreach (var region in regions)
                 {
