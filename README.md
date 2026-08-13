@@ -1,4 +1,4 @@
-# AstronautMod / 宇航员模组
+# AstronautMod-dev beta / 宇航员模组-测试版
 
 ## 安装方法 / Installation
 1. 将 AstronautMod.dll 复制/移动到：SFS游戏目录/Mods/ 文件夹下  
