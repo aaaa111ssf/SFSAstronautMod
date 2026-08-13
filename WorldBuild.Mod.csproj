@@ -1,0 +1,142 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>WorldBuildAstronautMerged</AssemblyName>
+    <RootNamespace>WorldBuild.Mod</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <DllDir>/data/user/work/game_dlls</DllDir>
+    <UIToolsDir>/data/user/work/UITools_stub/bin/Release/netstandard2.1</UIToolsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="WorldBuild.Toolkit\**\*" />
+    <Compile Include="WorldBuild.Toolkit\ExternalModule.cs" />
+    <Compile Include="WorldBuild.Toolkit\ModuleType.cs" />
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+    <Compile Remove="WorldBuild.Toolkit\Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="ResourceFile.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>ResourceFile.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(DllDir)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(DllDir)/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(DllDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UITools">
+      <HintPath>$(UIToolsDir)/UITools.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UniTask">
+      <HintPath>$(DllDir)/UniTask.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(DllDir)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(DllDir)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(DllDir)/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(DllDir)/UnityEngine.AnimationModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.Physics2DModule">
+      <HintPath>$(DllDir)/UnityEngine.Physics2DModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(DllDir)/UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(DllDir)/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(DllDir)/UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(DllDir)/UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputModule">
+      <HintPath>$(DllDir)/UnityEngine.InputModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(DllDir)/UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>$(DllDir)/UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(DllDir)/UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.SpriteMaskModule">
+      <HintPath>$(DllDir)/UnityEngine.SpriteMaskModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.SpriteShapeModule">
+      <HintPath>$(DllDir)/UnityEngine.SpriteShapeModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ParticleSystemModule">
+      <HintPath>$(DllDir)/UnityEngine.ParticleSystemModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TerrainModule">
+      <HintPath>$(DllDir)/UnityEngine.TerrainModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(DllDir)/Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sirenix.OdinInspector.Attributes">
+      <HintPath>$(DllDir)/Sirenix.OdinInspector.Attributes.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(DllDir)/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MonoMod.RuntimeDetour">
+      <HintPath>$(DllDir)/MonoMod.RuntimeDetour.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MonoMod.Utils">
+      <HintPath>$(DllDir)/MonoMod.Utils.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
