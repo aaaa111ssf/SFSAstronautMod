@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.IO;
+using System.Reflection.Emit;
 using HarmonyLib;
 using ModLoader;
 using ModLoader.Helpers;
@@ -43,7 +45,8 @@ namespace AstronautUnlocker
             PatchVariableLists();
             ModifyDisableParts();
             CreatePersistentAstronautState();
-            Debug.Log("[AstronautMod] v3.38 loaded");
+            LoadEvaConfig();
+            Debug.Log("[AstronautMod] v3.38 loaded with EVA injection support");
         }
 
         static void PatchVariableLists()
@@ -166,8 +169,8 @@ namespace AstronautUnlocker
 
                 if (AstronautState.main.crew_Build == null)
                     AstronautState.main.crew_Build = new List<string>();
-                else
-                    AstronautState.main.crew_Build.Clear();
+                // DO NOT clear crew_Build here — it would lose astronauts assigned in build mode.
+                // crew_Build is properly transitioned to crew_World in OnWorldSceneLoaded.
                 LoadAstronautDataFromCache();
                 EnsureAllStateLists();
                 UpdateDriver.ScheduleCrewModuleRefresh();
@@ -197,6 +200,10 @@ namespace AstronautUnlocker
                         AstronautState.main.AddCrew(name);
                     }
                 }
+
+                // Retry astronaut restoration for injected parts where AddCrew failed
+                // during InitializePart (AstronautState.main was null at that time)
+                RetryRestoreAstronauts();
 
                 Patch_Rocket_UseParts.ClearPatchedParts();
 
@@ -237,6 +244,57 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 Debug.Log("[AU] World init error: " + e);
+            }
+        }
+
+        // Retries AddCrew for astronauts on injected parts that were only name-set
+        // during InitializePart (when AstronautState.main was null)
+        private static void RetryRestoreAstronauts()
+        {
+            try
+            {
+                if (AstronautState.main == null) return;
+
+                // Find all injected CrewModules in the current scene
+                CrewModule[] allCrews = UnityEngine.Object.FindObjectsOfType<CrewModule>(true);
+                foreach (CrewModule crew in allCrews)
+                {
+                    Part part = Traverse.Create(crew).Field("part").GetValue<Part>();
+                    if (part == null) continue;
+                    if (!injectedPartIds.Contains(part.GetInstanceID())) continue;
+                    if (crew.seats == null) continue;
+
+                    foreach (var seat in crew.seats)
+                    {
+                        if (!seat.HasAstronaut) continue;
+                        string name = seat.astronaut.Value;
+
+                        // Check if astronaut is already in crew_World
+                        var state = AstronautState.main.GetAstronautState(name);
+                        if (state == AstronautState.State.Available)
+                        {
+                            // Astronaut has name set but AddCrew was never called
+                            AstronautState.main.AddCrew(name);
+                            Debug.Log("[AU] RetryRestore: added '" + name + "' to crew_World");
+                        }
+                    }
+                }
+
+                // Clear savedAstronauts for parts that no longer have pending data
+                var keysToRemove = new List<string>();
+                foreach (var kv in savedAstronauts)
+                {
+                    if (kv.Value == null || kv.Value.Count == 0)
+                        keysToRemove.Add(kv.Key);
+                }
+                foreach (string key in keysToRemove)
+                    savedAstronauts.Remove(key);
+                if (keysToRemove.Count > 0)
+                    SaveEvaConfig();
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] RetryRestoreAstronauts error: " + e);
             }
         }
 
@@ -614,6 +672,331 @@ namespace AstronautUnlocker
                         "Astronauts");
                 }
                 catch { }
+            }
+        }
+
+        // ===== EVA Injection Feature for Mod Parts =====
+
+        // EVA config: maps part names to whether EVA is enabled
+        public static Dictionary<string, bool> evaConfig = new Dictionary<string, bool>();
+
+        // Tracks which part instance IDs have been injected by us (not native CrewModule)
+        public static HashSet<int> injectedPartIds = new HashSet<int>();
+
+        // Saves astronauts when toggling off, restores when toggling on
+        public static Dictionary<string, List<string>> savedAstronauts = new Dictionary<string, List<string>>();
+
+        [Serializable]
+        class EvaConfigEntry { public string key; public bool value; }
+
+        [Serializable]
+        class EvaConfigData
+        {
+            public List<EvaConfigEntry> parts;
+            public List<string> astronautPartNames;
+            public List<string> astronautNames;
+        }
+
+        public static void LoadEvaConfig()
+        {
+            try
+            {
+                string path = Application.persistentDataPath + "/AstronautMod_eva.json";
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var data = JsonUtility.FromJson<EvaConfigData>(json);
+                    if (data?.parts != null)
+                    {
+                        foreach (var entry in data.parts)
+                            evaConfig[entry.key] = entry.value;
+                    }
+                    // Restore saved astronauts
+                    if (data?.astronautPartNames != null && data.astronautNames != null &&
+                        data.astronautPartNames.Count == data.astronautNames.Count)
+                    {
+                        for (int i = 0; i < data.astronautPartNames.Count; i++)
+                        {
+                            string pn = data.astronautPartNames[i];
+                            if (!savedAstronauts.ContainsKey(pn))
+                                savedAstronauts[pn] = new List<string>();
+                            savedAstronauts[pn].Add(data.astronautNames[i]);
+                        }
+                    }
+                }
+            }
+            catch (Exception e) { Debug.Log("[AU] LoadEvaConfig error: " + e); }
+        }
+
+        public static void SaveEvaConfig()
+        {
+            try
+            {
+                string path = Application.persistentDataPath + "/AstronautMod_eva.json";
+                var data = new EvaConfigData();
+                data.parts = evaConfig.Select(kv =>
+                    new EvaConfigEntry { key = kv.Key, value = kv.Value }).ToList();
+
+                // Persist saved astronauts as flat lists
+                data.astronautPartNames = new List<string>();
+                data.astronautNames = new List<string>();
+                foreach (var kv in savedAstronauts)
+                {
+                    if (kv.Value == null) continue;
+                    foreach (string name in kv.Value)
+                    {
+                        data.astronautPartNames.Add(kv.Key);
+                        data.astronautNames.Add(name);
+                    }
+                }
+
+                string json = JsonUtility.ToJson(data, true);
+                File.WriteAllText(path, json);
+            }
+            catch (Exception e) { Debug.Log("[AU] SaveEvaConfig error: " + e); }
+        }
+
+        // Returns true if this part has a NATIVE CrewModule (not injected by us)
+        public static bool HasNativeCrewModule(Part part)
+        {
+            if (!part.HasModule<CrewModule>()) return false;
+            return !injectedPartIds.Contains(part.GetInstanceID());
+        }
+
+        public static void InjectCrewModule(Part part)
+        {
+            try
+            {
+                int partId = part.GetInstanceID();
+
+                // Skip if already injected by us
+                if (injectedPartIds.Contains(partId)) return;
+
+                // Skip if part already has a native CrewModule
+                if (part.GetComponentInChildren<CrewModule>(true) != null) return;
+
+                // Add CrewModule component
+                CrewModule crew = part.gameObject.AddComponent<CrewModule>();
+
+                var tr = Traverse.Create(crew);
+                // Use the part's CURRENT mass as baseMass so OnSeatChange doesn't overwrite it.
+                // The part's original mass comes from its JSON definition + resource modules.
+                // baseMass = current mass minus any crew mass (0 initially since no crew yet).
+                float existingMass = part.mass != null ? part.mass.Value : 0f;
+                tr.Field("baseMass").SetValue(existingMass);
+                tr.Field("part").SetValue(part);
+
+                // Create seat
+                var seat = new CrewModule.Seat();
+                var seatTr = Traverse.Create(seat);
+
+                // Calculate hatch position from colliders
+                Vector2 hatchPos = CalcHatchPosition(part);
+                seatTr.Field("hatchPosition").SetValue(hatchPos);
+                seatTr.Field("externalSeat").SetValue(false);
+
+                // Create astronaut reference (empty = no astronaut yet)
+                var astronautRef = new String_Reference();
+                seatTr.Field("astronaut").SetValue(astronautRef);
+
+                // astronautModel = null — the game's native seat rendering handles visibility
+                seatTr.Field("astronautModel").SetValue(null);
+                seatTr.Field("resources").SetValue(null);
+
+                tr.Field("seats").SetValue(new CrewModule.Seat[] { seat });
+
+                // needsCrewForControl = false — injected parts don't require crew
+                var needsCrewRef = new Bool_Reference();
+                tr.Field("needsCrewForControl").SetValue(needsCrewRef);
+
+                // hasControl = true (independent from ControlModule)
+                var hasControlRef = new Bool_Reference();
+                tr.Field("hasControl").SetValue(hasControlRef);
+
+                tr.Field("interior").SetValue(null);
+                tr.Field("hatch").SetValue(null);
+
+                // Track BEFORE Initialize so OnSeatChange knows it's injected
+                injectedPartIds.Add(partId);
+
+                // Clear module cache
+                ClearModuleCache(part);
+
+                // Initialize: registers OnChange callbacks, calls Seat.OnStart
+                try
+                {
+                    ((I_InitializePartModule)crew).Initialize();
+                }
+                catch (Exception ie)
+                {
+                    Debug.Log("[AU] Initialize error (non-fatal): " + ie.Message);
+                }
+
+                // Re-enforce needsCrewForControl = false AFTER Initialize
+                // (Initialize may trigger OnSeatChange which could change it)
+                needsCrewRef.Value = false;
+                hasControlRef.Value = true;
+
+                // Restore saved astronauts if any
+                string partName = part.name;
+                if (savedAstronauts.ContainsKey(partName) && savedAstronauts[partName].Count > 0)
+                {
+                    var names = new List<string>(savedAstronauts[partName]); // Copy
+                    var restored = new List<string>();
+
+                    foreach (string name in names)
+                    {
+                        try
+                        {
+                            if (AstronautState.main != null)
+                            {
+                                // Use seat.Board() which calls AddCrew + sets astronaut.Value
+                                seat.Board(name, 1.0, float.NegativeInfinity);
+                                restored.Add(name);
+                            }
+                            else
+                            {
+                                // AstronautState not ready yet — just set the name,
+                                // AddCrew will be called in OnWorldSceneLoaded
+                                var seatAstroRef = Traverse.Create(seat)
+                                    .Field("astronaut").GetValue<String_Reference>();
+                                if (seatAstroRef != null)
+                                    seatAstroRef.Value = name;
+                            }
+                        }
+                        catch (Exception be)
+                        {
+                            Debug.Log("[AU] Restore astronaut error: " + be.Message);
+                        }
+                    }
+
+                    // Only clear successfully restored names; keep others for retry
+                    if (restored.Count > 0)
+                    {
+                        savedAstronauts[partName] = names.Except(restored).ToList();
+                        SaveEvaConfig();
+                    }
+                }
+
+                Debug.Log("[AU] Injected CrewModule on part: " + part.name + " (ID: " + partId + ")");
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] InjectCrewModule error: " + e);
+            }
+        }
+
+        static Vector2 CalcHatchPosition(Part part)
+        {
+            try
+            {
+                Collider2D[] cols = part.GetComponentsInChildren<Collider2D>();
+                if (cols.Length > 0)
+                {
+                    Bounds bounds = cols[0].bounds;
+                    foreach (var c in cols)
+                        bounds.Encapsulate(c.bounds);
+
+                    // Hatch at top of part (local coordinates)
+                    Vector3 topLocal = part.transform.InverseTransformPoint(
+                        new Vector3(bounds.center.x, bounds.max.y, 0));
+                    return new Vector2(topLocal.x, topLocal.y);
+                }
+            }
+            catch { }
+            return new Vector2(0f, 0.5f); // Default fallback
+        }
+
+        public static void RemoveCrewModule(Part part)
+        {
+            try
+            {
+                int partId = part.GetInstanceID();
+
+                // Only remove if we injected it
+                if (!injectedPartIds.Contains(partId)) return;
+
+                CrewModule[] crews = part.GetComponentsInChildren<CrewModule>(true);
+                foreach (var crew in crews)
+                {
+                    // Save astronaut names before removing
+                    if (crew.seats != null)
+                    {
+                        var savedList = new List<string>();
+                        foreach (var seat in crew.seats)
+                        {
+                            if (seat.HasAstronaut)
+                            {
+                                savedList.Add(seat.astronaut.Value);
+                                try { seat.Exit(); }
+                                catch { }
+                            }
+                        }
+                        if (savedList.Count > 0)
+                            savedAstronauts[part.name] = savedList;
+                    }
+                    UnityEngine.Object.DestroyImmediate(crew);
+                }
+                injectedPartIds.Remove(partId);
+                ClearModuleCache(part);
+                SaveEvaConfig(); // Persist astronaut names to JSON
+                Debug.Log("[AU] Removed CrewModule from part: " + part.name);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] RemoveCrewModule error: " + e);
+            }
+        }
+
+        public static void ClearModuleCache(Part part)
+        {
+            try
+            {
+                var modulesField = typeof(Part).GetField("modules",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                var moduleCountField = typeof(Part).GetField("moduleCount",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                modulesField?.SetValue(part, new Dictionary<string, object>());
+                moduleCountField?.SetValue(part, new Dictionary<string, int>());
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] ClearModuleCache error: " + e);
+            }
+        }
+
+        public static void ReopenPartMenu(Part part)
+        {
+            try
+            {
+                if (BuildManager.main != null)
+                {
+                    // Build mode
+                    AttachableStatsMenu menu = BuildManager.main.buildMenus.partMenu;
+                    if (menu != null)
+                    {
+                        PartDrawSettings settings = PartDrawSettings.BuildSettings;
+                        menu.Open_DrawPart(() => true, new Part[] { part },
+                            settings, () => (Vector2)part.transform.position,
+                            false, false);
+                    }
+                }
+                else
+                {
+                    // World mode
+                    AttachableStatsMenu menu = UnityEngine.Object.FindObjectOfType<AttachableStatsMenu>(true);
+                    if (menu != null)
+                    {
+                        PartDrawSettings settings = PartDrawSettings.WorldSettings;
+                        menu.Open_DrawPart(() => true, new Part[] { part },
+                            settings, () => (Vector2)part.transform.position,
+                            false, false);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] ReopenPartMenu error: " + e);
             }
         }
     }
@@ -1021,7 +1404,8 @@ namespace AstronautUnlocker
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
 
-                if (AstronautState.main != null && BuildManager.main != null)
+                // Normal behavior: remove from crew_Build (Build scene) or crew_World (World scene)
+                if (AstronautState.main != null)
                 {
                     AstronautState.main.RemoveCrew(astronautName);
                 }
@@ -1279,6 +1663,11 @@ namespace AstronautUnlocker
             {
                 var tr = Traverse.Create(__instance);
 
+                // Check if this is our injected CrewModule
+                SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
+                bool isInjected = part != null &&
+                    AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID());
+
                 bool disableAstronauts = DevSettings.DisableAstronauts;
 
                 bool anyHasAstronaut = false;
@@ -1294,7 +1683,11 @@ namespace AstronautUnlocker
                     .GetValue<SFS.Variables.Bool_Reference>();
                 bool needsCrew = needsCrewRef != null && needsCrewRef.Value;
 
-                bool hasControl = disableAstronauts || anyHasAstronaut || !needsCrew;
+                // For injected parts: ALWAYS hasControl = true (they don't need crew to control)
+                // For native parts: original logic
+                bool hasControl = isInjected
+                    ? true
+                    : (disableAstronauts || anyHasAstronaut || !needsCrew);
 
                 var hasControlRef = tr.Field("hasControl")
                     .GetValue<SFS.Variables.Bool_Reference>();
@@ -1320,7 +1713,6 @@ namespace AstronautUnlocker
                         if (seat.HasAstronaut) seatMass += 0.2f;
                     }
                 }
-                SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
                 if (part != null && part.mass != null)
                     part.mass.Value = baseMass + seatMass;
 
@@ -1610,7 +2002,7 @@ namespace AstronautUnlocker
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_FlagBtn");
                     plantFlagButton = ModGUIBuilder.CreateButton(
                         flagBtnHolder.transform, 150, 50,
-                        450, -300,
+                        -450, -300,
                         () =>
                         {
                             if (AstronautManager.main != null)
@@ -2656,7 +3048,7 @@ namespace AstronautUnlocker
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_TeleportBtn");
                     teleportButton = ModGUIBuilder.CreateButton(
                         teleportBtnHolder.transform, 150, 50,
-                        450, -370,
+                        -450, -200,
                         () =>
                         {
                             try
@@ -2766,6 +3158,173 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 Debug.Log("[AU] UpdateTelemetry error: " + e);
+            }
+        }
+    }
+
+    // ===== EVA Injection Harmony Patches =====
+
+    // Adds "Enable EVA" toggle to mod control parts' right-click menu
+    [HarmonyPatch(typeof(Part), "DrawPartStats")]
+    public class Patch_Part_DrawPartStats_EVA
+    {
+        static void Postfix(Part __instance, Part[] allParts, StatsMenu drawer, PartDrawSettings settings)
+        {
+            try
+            {
+                // Only show in build or world mode (not pick grid)
+                if (!settings.build && !settings.game) return;
+
+                // Must have ControlModule (it's a control part)
+                if (!__instance.HasModule<ControlModule>()) return;
+
+                // Skip parts that already have a NATIVE CrewModule (vanilla crew parts)
+                if (AstronautUnlockerMod.HasNativeCrewModule(__instance)) return;
+
+                string partName = __instance.name;
+                Part capturedPart = __instance;
+
+                // Draw EVA toggle at bottom (priority -500 = very low = bottom of menu)
+                drawer.DrawToggle(-500,
+                    () => "Enable EVA",
+                    () =>
+                    {
+                        try
+                        {
+                            bool currentEnabled = AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
+                                                   AstronautUnlockerMod.evaConfig[partName];
+                            bool newEnabled = !currentEnabled;
+                            AstronautUnlockerMod.evaConfig[partName] = newEnabled;
+                            AstronautUnlockerMod.SaveEvaConfig();
+
+                            if (newEnabled)
+                            {
+                                AstronautUnlockerMod.InjectCrewModule(capturedPart);
+                            }
+                            else
+                            {
+                                AstronautUnlockerMod.RemoveCrewModule(capturedPart);
+                            }
+
+                            // Clear module cache so HasModule<CrewModule> returns correct result
+                            AstronautUnlockerMod.ClearModuleCache(capturedPart);
+
+                            // Do NOT close/reopen the menu — that causes the menu arrow to
+                            // "teleport" because ReopenPartMenu uses world coordinates instead
+                            // of screen coordinates. The toggle's getValue callback will
+                            // automatically reflect the new state on the next menu redraw.
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.Log("[AU] EVA toggle action error: " + e);
+                        }
+                    },
+                    () => AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
+                           AstronautUnlockerMod.evaConfig[partName],
+                    null, null);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] DrawPartStats EVA toggle error: " + e);
+            }
+        }
+    }
+
+    // Auto-inject CrewModule for configured parts when they are initialized
+    [HarmonyPatch(typeof(Part), "InitializePart")]
+    public class Patch_Part_InitializePart_EVA
+    {
+        static void Postfix(Part __instance)
+        {
+            try
+            {
+                // Already has CrewModule — skip
+                if (__instance.HasModule<CrewModule>()) return;
+
+                // No ControlModule — skip
+                if (!__instance.HasModule<ControlModule>()) return;
+
+                string partName = __instance.name;
+
+                // Check if EVA is enabled for this part
+                if (AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
+                    AstronautUnlockerMod.evaConfig[partName])
+                {
+                    AstronautUnlockerMod.InjectCrewModule(__instance);
+                    AstronautUnlockerMod.ClearModuleCache(__instance);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] InitializePart EVA auto-inject error: " + e);
+            }
+        }
+    }
+
+    // Widens EVA boarding distance for large mod capsules (20 → 50 units)
+    [HarmonyPatch(typeof(CrewModule), "EVA_Board")]
+    public class Patch_EVA_Board_Distance
+    {
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> codes)
+        {
+            foreach (var c in codes)
+            {
+                if (c.opcode == OpCodes.Ldc_R4 && (float)c.operand == 400f)
+                    c.operand = 2500f;
+                yield return c;
+            }
+        }
+    }
+
+    // Before launch: save astronaut names from injected CrewModules to savedAstronauts.
+    // The injected CrewModule is NOT in the part's JSON definition, so PartSave.CreateSaves()
+    // will NOT serialize seat.astronaut.Value. We must save them manually and restore in
+    // World scene when InjectCrewModule re-injects the CrewModule.
+    [HarmonyPatch(typeof(BuildManager), "Launch")]
+    public class Patch_BuildManager_Launch_SaveAstronauts
+    {
+        static void Prefix()
+        {
+            try
+            {
+                if (BuildManager.main == null) return;
+
+                // Get all parts in the build grid
+                PartHolder partsHolder = BuildManager.main.buildGrid.activeGrid.partsHolder;
+                if (partsHolder == null || partsHolder.parts == null) return;
+
+                foreach (Part part in partsHolder.parts)
+                {
+                    int partId = part.GetInstanceID();
+                    if (!AstronautUnlockerMod.injectedPartIds.Contains(partId)) continue;
+
+                    // This is an injected part — save its astronaut names
+                    CrewModule crew = part.GetComponentInChildren<CrewModule>(true);
+                    if (crew == null || crew.seats == null) continue;
+
+                    var savedList = new List<string>();
+                    foreach (var seat in crew.seats)
+                    {
+                        if (seat.HasAstronaut)
+                        {
+                            savedList.Add(seat.astronaut.Value);
+                        }
+                    }
+
+                    if (savedList.Count > 0)
+                    {
+                        AstronautUnlockerMod.savedAstronauts[part.name] = savedList;
+                        Debug.Log("[AU] Launch: saved " + savedList.Count +
+                                  " astronaut(s) from injected part: " + part.name);
+                    }
+                }
+
+                // Persist to JSON so they survive scene reload
+                AstronautUnlockerMod.SaveEvaConfig();
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] Launch Prefix save astronauts error: " + e);
             }
         }
     }
