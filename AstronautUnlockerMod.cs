@@ -1083,20 +1083,22 @@ namespace AstronautUnlocker
         {
             try
             {
+                // --- Backup in-memory state before LoadSave overwrites it ---
                 if (AstronautState.main?.state?.astronauts != null &&
                     AstronautState.main.state.astronauts.Count > 0)
                 {
                     backupAstronauts = new List<WorldSave.Astronauts.Data>(
                         AstronautState.main.state.astronauts);
+                    foreach (var a in backupAstronauts)
+                        Debug.Log("[AU] Prefix backup astronaut: " + a.astronautName + " alive=" + a.alive);
                 }
 
+                // backupCrewBuild is ONLY for Build→World transition (preserve crew_Build).
+                // Do NOT use destroyedSeatAstronauts here — those astronauts are dead
+                // and must NOT be re-added to crew_Build or crew_World.
                 if (AstronautState.main?.crew_Build != null && AstronautState.main.crew_Build.Count > 0)
                 {
                     backupCrewBuild = new List<string>(AstronautState.main.crew_Build);
-                }
-                else if (Patch_Seat_OnDestroy.destroyedSeatAstronauts.Count > 0)
-                {
-                    backupCrewBuild = new List<string>(Patch_Seat_OnDestroy.destroyedSeatAstronauts);
                 }
                 else
                 {
@@ -1118,29 +1120,69 @@ namespace AstronautUnlocker
                         save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();
                 }
 
+                // --- Sync backup astronauts (incl. alive flag) into the save ---
+                // LoadSave uses save.astronauts.astronauts directly, so we must
+                // update the alive flag on EXISTING entries, not just add new ones.
                 if (backupAstronauts != null && backupAstronauts.Count > 0 &&
                     save?.astronauts?.astronauts != null)
                 {
                     foreach (var astro in backupAstronauts)
                     {
-                        bool exists = save.astronauts.astronauts.Any(a => a.astronautName == astro.astronautName);
-                        if (!exists)
+                        var existing = save.astronauts.astronauts
+                            .FirstOrDefault(a => a.astronautName == astro.astronautName);
+                        if (existing != null)
+                        {
+                            existing.alive = astro.alive;
+                        }
+                        else
                         {
                             save.astronauts.astronauts.Add(astro);
                         }
                     }
                 }
 
+                // --- Handle destroyed astronauts (World→Build transition) ---
+                // These astronauts died in-flight. Mark them dead in the save and
+                // remove from crew_World/eva so they don't reappear as "in flight".
+                if (Patch_Seat_OnDestroy.destroyedSeatAstronauts.Count > 0 &&
+                    save?.astronauts != null)
+                {
+                    foreach (string name in Patch_Seat_OnDestroy.destroyedSeatAstronauts)
+                    {
+                        Debug.Log("[AU] Prefix handling destroyed astronaut: " + name);
+
+                        // Mark as dead in save's astronauts list
+                        var data = save.astronauts.astronauts?
+                            .FirstOrDefault(a => a.astronautName == name);
+                        if (data != null)
+                        {
+                            data.alive = false;
+                            Debug.Log("[AU] Prefix set " + name + " alive=false in save");
+                        }
+
+                        // Remove from crew_World (LoadSave ignores crew_World, but
+                        // the save file on disk should be correct for future loads)
+                        save.astronauts.crew_World?
+                            .RemoveAll(c => c.astronautName == name);
+
+                        // Remove from EVA list
+                        save.astronauts.eva?
+                            .RemoveAll(e => e.astronautName == name);
+                    }
+                }
+
+                // --- Handle backupCrewBuild (Build→World transition only) ---
+                // Ensure crew_Build astronauts are in crew_World for the World scene.
                 if (backupCrewBuild != null && backupCrewBuild.Count > 0 &&
                     save?.astronauts != null)
                 {
                     if (save.astronauts.crew_World == null)
                         save.astronauts.crew_World = new List<WorldSave.Astronauts.Crew_World>();
                     if (save.astronauts.eva == null)
-                        save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();int worldRemoved = save.astronauts.crew_World.RemoveAll(c => backupCrewBuild.Contains(c.astronautName));
+                        save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();
 
-                    int evaRemoved = 0;
-                    save.astronauts.eva.RemoveAll(e => { if (backupCrewBuild.Contains(e.astronautName)) { evaRemoved++; return true; } return false; });
+                    save.astronauts.crew_World.RemoveAll(c => backupCrewBuild.Contains(c.astronautName));
+                    save.astronauts.eva.RemoveAll(e => backupCrewBuild.Contains(e.astronautName));
 
                     foreach (string name in backupCrewBuild)
                     {
@@ -1188,28 +1230,29 @@ namespace AstronautUnlocker
                 {
                     if (AstronautState.main?.state?.astronauts != null)
                     {
-                        int existing = AstronautState.main.state.astronauts.Count;
                         foreach (var astro in backupAstronauts)
                         {
-                            bool exists = false;
-                            foreach (var existingAstro in AstronautState.main.state.astronauts)
+                            var existing = AstronautState.main.state.astronauts
+                                .FirstOrDefault(a => a.astronautName == astro.astronautName);
+                            if (existing != null)
                             {
-                                if (existingAstro.astronautName == astro.astronautName)
-                                {
-                                    exists = true;
-                                    break;
-                                }
+                                existing.alive = astro.alive;
+                                Debug.Log("[AU] Postfix restored " + astro.astronautName +
+                                    " alive=" + astro.alive);
                             }
-                            if (!exists)
+                            else
                             {
                                 AstronautState.main.state.astronauts.Add(astro);
+                                Debug.Log("[AU] Postfix added missing astronaut " + astro.astronautName);
                             }
                         }
-                        int added = AstronautState.main.state.astronauts.Count - existing;
                     }
                     backupAstronauts = null;
                 }
 
+                // Restore crew_Build (only for Build→World transition).
+                // destroyedSeatAstronauts are NOT in backupCrewBuild, so dead
+                // astronauts won't be re-added to crew_Build.
                 if (backupCrewBuild != null && backupCrewBuild.Count > 0)
                 {
                     if (AstronautState.main?.crew_Build != null)
@@ -1404,13 +1447,33 @@ namespace AstronautUnlocker
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
 
-                // Normal behavior: remove from crew_Build (Build scene) or crew_World (World scene)
+                Debug.Log("[AU] Seat.OnDestroy: astronaut=" + astronautName +
+                    " GameManager=" + (GameManager.main != null) +
+                    " BuildManager=" + (BuildManager.main != null));
+
+                // Remove from crew_Build (Build scene) or crew_World (World scene)
                 if (AstronautState.main != null)
                 {
                     AstronautState.main.RemoveCrew(astronautName);
+
+                    // In World scene (GameManager.main != null), mark astronaut as dead.
+                    // This is the original game behavior — destroying a capsule kills the crew.
+                    if (GameManager.main != null)
+                    {
+                        var data = AstronautState.main.GetAstronautByName(astronautName);
+                        if (data != null)
+                        {
+                            data.alive = false;
+                            Debug.Log("[AU] Seat.OnDestroy: marked " + astronautName + " alive=false");
+                        }
+                        else
+                        {
+                            Debug.Log("[AU] Seat.OnDestroy: WARNING GetAstronautByName returned null for " + astronautName);
+                        }
+                    }
                 }
 
-                return false; // Skip original (which sets alive = false)
+                return false; // Skip original
             }
             catch (Exception e)
             {
