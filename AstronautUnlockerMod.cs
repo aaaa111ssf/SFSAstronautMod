@@ -46,7 +46,7 @@ namespace AstronautUnlocker
             ModifyDisableParts();
             CreatePersistentAstronautState();
             LoadEvaConfig();
-            Debug.Log("[AstronautMod] v3.38 loaded with EVA injection support");
+            
         }
 
         static void PatchVariableLists()
@@ -61,7 +61,7 @@ namespace AstronautUnlocker
                 }
                 if (variableListGeneric == null)
                 {
-                    Debug.Log("[AU] VariableList<> type not found, skipping patch");
+                    
                     return;
                 }
 
@@ -80,7 +80,7 @@ namespace AstronautUnlocker
                     }
                     catch (Exception e)
                     {
-                        Debug.Log("[AU] Failed to patch VariableList<" + T.Name + ">: " + e.Message);
+                        
                     }
                 }
 
@@ -98,7 +98,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] PatchVariableLists error: " + e.Message);
+                
             }
         }
 
@@ -126,7 +126,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Hub init error: " + e);
+                
             }
         }
 
@@ -169,8 +169,7 @@ namespace AstronautUnlocker
 
                 if (AstronautState.main.crew_Build == null)
                     AstronautState.main.crew_Build = new List<string>();
-                // DO NOT clear crew_Build here — it would lose astronauts assigned in build mode.
-                // crew_Build is properly transitioned to crew_World in OnWorldSceneLoaded.
+                // 不清空 crew_Build，进入世界时再转换为 crew_World
                 LoadAstronautDataFromCache();
                 EnsureAllStateLists();
                 UpdateDriver.ScheduleCrewModuleRefresh();
@@ -179,7 +178,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Build init error: " + e);
+                
             }
         }
 
@@ -201,15 +200,14 @@ namespace AstronautUnlocker
                     }
                 }
 
-                // Retry astronaut restoration for injected parts where AddCrew failed
-                // during InitializePart (AstronautState.main was null at that time)
+                // 重试注入部件的乘员恢复（初始化时 AstronautState 可能为 null）
                 RetryRestoreAstronauts();
 
                 Patch_Rocket_UseParts.ClearPatchedParts();
 
                 if (AstronautManager.main == null)
                 {
-                    Debug.Log("[AU] WARNING: AstronautManager.main is null in World scene! EVA will not work.");
+                    
                     GameObject go = new GameObject("__AstronautManagerFallback");
                     UnityEngine.Object.DontDestroyOnLoad(go);
                     AstronautManager mgr = go.AddComponent<AstronautManager>();
@@ -218,8 +216,7 @@ namespace AstronautUnlocker
                 {
                     if (AstronautManager.main.astronautPrefab == null)
                     {
-                        Debug.Log("[AU] WARNING: astronautPrefab is NULL! " +
-                            "EVA SpawnEVA will fail. Attempting to find prefab in resources...");
+                        
 
                         Astronaut_EVA[] allEVA = UnityEngine.Object.FindObjectsOfType<Astronaut_EVA>(includeInactive: true);
 
@@ -243,19 +240,18 @@ namespace AstronautUnlocker
     }
             catch (Exception e)
             {
-                Debug.Log("[AU] World init error: " + e);
+                
             }
         }
 
-        // Retries AddCrew for astronauts on injected parts that were only name-set
-        // during InitializePart (when AstronautState.main was null)
+        // 重试注入部件乘员的 AddCrew（初始化时仅设名字）
         private static void RetryRestoreAstronauts()
         {
             try
             {
                 if (AstronautState.main == null) return;
 
-                // Find all injected CrewModules in the current scene
+                // 遍历场景中所有注入部件
                 CrewModule[] allCrews = UnityEngine.Object.FindObjectsOfType<CrewModule>(true);
                 foreach (CrewModule crew in allCrews)
                 {
@@ -269,18 +265,17 @@ namespace AstronautUnlocker
                         if (!seat.HasAstronaut) continue;
                         string name = seat.astronaut.Value;
 
-                        // Check if astronaut is already in crew_World
+                        // 乘员仍为 Available 说明 AddCrew 未执行，补上
                         var state = AstronautState.main.GetAstronautState(name);
                         if (state == AstronautState.State.Available)
                         {
-                            // Astronaut has name set but AddCrew was never called
                             AstronautState.main.AddCrew(name);
-                            Debug.Log("[AU] RetryRestore: added '" + name + "' to crew_World");
+                            
                         }
                     }
                 }
 
-                // Clear savedAstronauts for parts that no longer have pending data
+                // 清理无待恢复数据的部件
                 var keysToRemove = new List<string>();
                 foreach (var kv in savedAstronauts)
                 {
@@ -294,7 +289,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] RetryRestoreAstronauts error: " + e);
+                
             }
         }
 
@@ -312,7 +307,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] EnsureRockSelector error: " + e);
+                
             }
         }
 
@@ -345,12 +340,11 @@ namespace AstronautUnlocker
                     return;
                 }
 
-                Debug.Log("[AU] flagPrefab is NULL and no resources found. " +
-                    "Will use code-generated flag fallback.");
+                
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] EnsureFlagPrefab error: " + e);
+                
             }
         }
 
@@ -372,7 +366,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] DisableParts error: " + e);
+                
             }
         }
 
@@ -473,7 +467,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Load from cache error: " + e);
+                
             }
         }
 
@@ -489,7 +483,7 @@ namespace AstronautUnlocker
 
                 if (save == null)
                 {
-                    Debug.Log("[AU] PersistAstronautStateToCache: no existing world save, skipping");
+                    
                     return;
                 }
 
@@ -501,7 +495,7 @@ namespace AstronautUnlocker
     }
             catch (Exception e)
             {
-                Debug.Log("[AU] PersistAstronautStateToCache error: " + e);
+                
             }
         }
 
@@ -582,7 +576,7 @@ namespace AstronautUnlocker
                                             }
                                             catch (Exception te)
                                             {
-                                                Debug.Log("[AU] TextAdapter set text error: " + te.Message);
+                                                
                                             }
                                         }
                                     }
@@ -597,7 +591,9 @@ namespace AstronautUnlocker
                                         tmp.text = "Astronauts";
                                     }
                                     if (textComp == null && tmpTexts.Length == 0)
-                                        Debug.Log("[AU] WARNING: No text component found on cloned button!");
+                                    {
+                                        // 未找到文本组件
+                                    }
 
                                     SFS.UI.Button sfsBtn = clonedAstronautBtn.GetComponent<SFS.UI.Button>();
                                     if (sfsBtn != null)
@@ -637,12 +633,12 @@ namespace AstronautUnlocker
                             }
                             else
                             {
-                                Debug.Log("[AU] resumeGameButton gameObject is null or inactive");
+                                
                             }
                         }
                         else
                         {
-                            Debug.Log("[AU] resumeGameButton is null, using ModGUI fallback");
+                            
                         }
                     }
                 }
@@ -655,7 +651,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Button activate error: " + e);
+                
 
                 if (clonedAstronautBtn != null)
                 {
@@ -675,15 +671,15 @@ namespace AstronautUnlocker
             }
         }
 
-        // ===== EVA Injection Feature for Mod Parts =====
+        // ===== 模组部件 EVA 注入 =====
 
-        // EVA config: maps part names to whether EVA is enabled
+        // EVA 配置：部件名 -> 是否启用 EVA
         public static Dictionary<string, bool> evaConfig = new Dictionary<string, bool>();
 
-        // Tracks which part instance IDs have been injected by us (not native CrewModule)
+        // 记录已由本模组注入 CrewModule 的部件 ID
         public static HashSet<int> injectedPartIds = new HashSet<int>();
 
-        // Saves astronauts when toggling off, restores when toggling on
+        // 关闭 EVA 时暂存乘员，开启时恢复
         public static Dictionary<string, List<string>> savedAstronauts = new Dictionary<string, List<string>>();
 
         [Serializable]
@@ -711,7 +707,7 @@ namespace AstronautUnlocker
                         foreach (var entry in data.parts)
                             evaConfig[entry.key] = entry.value;
                     }
-                    // Restore saved astronauts
+                    // 恢复暂存的乘员
                     if (data?.astronautPartNames != null && data.astronautNames != null &&
                         data.astronautPartNames.Count == data.astronautNames.Count)
                     {
@@ -725,7 +721,7 @@ namespace AstronautUnlocker
                     }
                 }
             }
-            catch (Exception e) { Debug.Log("[AU] LoadEvaConfig error: " + e); }
+            catch (Exception e) {  }
         }
 
         public static void SaveEvaConfig()
@@ -737,7 +733,7 @@ namespace AstronautUnlocker
                 data.parts = evaConfig.Select(kv =>
                     new EvaConfigEntry { key = kv.Key, value = kv.Value }).ToList();
 
-                // Persist saved astronauts as flat lists
+                // 将暂存乘员以扁平列表持久化
                 data.astronautPartNames = new List<string>();
                 data.astronautNames = new List<string>();
                 foreach (var kv in savedAstronauts)
@@ -753,10 +749,25 @@ namespace AstronautUnlocker
                 string json = JsonUtility.ToJson(data, true);
                 File.WriteAllText(path, json);
             }
-            catch (Exception e) { Debug.Log("[AU] SaveEvaConfig error: " + e); }
+            catch (Exception e) {  }
         }
 
-        // Returns true if this part has a NATIVE CrewModule (not injected by us)
+        // 离开世界时清空暂存乘员，避免新建火箭自动恢复旧乘员
+        public static void ClearSavedAstronauts(string reason)
+        {
+            try
+            {
+                if (savedAstronauts.Count > 0)
+                {
+                    
+                    savedAstronauts.Clear();
+                    SaveEvaConfig();
+                }
+            }
+            catch (Exception e) {  }
+        }
+
+        // 该部件是否自带原生 CrewModule（非本模组注入）
         public static bool HasNativeCrewModule(Part part)
         {
             if (!part.HasModule<CrewModule>()) return false;
@@ -769,80 +780,75 @@ namespace AstronautUnlocker
             {
                 int partId = part.GetInstanceID();
 
-                // Skip if already injected by us
+                // 跳过已注入或已带原生 CrewModule 的部件
                 if (injectedPartIds.Contains(partId)) return;
-
-                // Skip if part already has a native CrewModule
                 if (part.GetComponentInChildren<CrewModule>(true) != null) return;
 
-                // Add CrewModule component
+                // 添加 CrewModule 组件
                 CrewModule crew = part.gameObject.AddComponent<CrewModule>();
 
                 var tr = Traverse.Create(crew);
-                // Use the part's CURRENT mass as baseMass so OnSeatChange doesn't overwrite it.
-                // The part's original mass comes from its JSON definition + resource modules.
-                // baseMass = current mass minus any crew mass (0 initially since no crew yet).
+                // 用当前质量作为 baseMass，避免 OnSeatChange 覆盖
                 float existingMass = part.mass != null ? part.mass.Value : 0f;
                 tr.Field("baseMass").SetValue(existingMass);
                 tr.Field("part").SetValue(part);
 
-                // Create seat
+                // 创建座椅
                 var seat = new CrewModule.Seat();
                 var seatTr = Traverse.Create(seat);
 
-                // Calculate hatch position from colliders
+                // 根据碰撞体计算舱口位置
                 Vector2 hatchPos = CalcHatchPosition(part);
                 seatTr.Field("hatchPosition").SetValue(hatchPos);
                 seatTr.Field("externalSeat").SetValue(false);
 
-                // Create astronaut reference (empty = no astronaut yet)
+                // 创建乘员引用（初始为空）
                 var astronautRef = new String_Reference();
                 seatTr.Field("astronaut").SetValue(astronautRef);
 
-                // astronautModel = null — the game's native seat rendering handles visibility
                 seatTr.Field("astronautModel").SetValue(null);
                 seatTr.Field("resources").SetValue(null);
 
                 tr.Field("seats").SetValue(new CrewModule.Seat[] { seat });
 
-                // needsCrewForControl = false — injected parts don't require crew
+                // 注入部件不要求乘员即可控制
                 var needsCrewRef = new Bool_Reference();
                 tr.Field("needsCrewForControl").SetValue(needsCrewRef);
 
-                // hasControl = true (independent from ControlModule)
+                // hasControl 独立于 ControlModule
                 var hasControlRef = new Bool_Reference();
                 tr.Field("hasControl").SetValue(hasControlRef);
 
                 tr.Field("interior").SetValue(null);
                 tr.Field("hatch").SetValue(null);
 
-                // Track BEFORE Initialize so OnSeatChange knows it's injected
+                // 先标记已注入，供 OnSeatChange 判断
                 injectedPartIds.Add(partId);
 
-                // Clear module cache
+                // 清模块缓存
                 ClearModuleCache(part);
 
-                // Initialize: registers OnChange callbacks, calls Seat.OnStart
+                // 初始化：注册回调并调用 Seat.OnStart
                 try
                 {
                     ((I_InitializePartModule)crew).Initialize();
                 }
                 catch (Exception ie)
                 {
-                    Debug.Log("[AU] Initialize error (non-fatal): " + ie.Message);
+                    
                 }
 
-                // Re-enforce needsCrewForControl = false AFTER Initialize
-                // (Initialize may trigger OnSeatChange which could change it)
+                // 初始化后重新强制 needsCrewForControl=false
                 needsCrewRef.Value = false;
                 hasControlRef.Value = true;
 
-                // Restore saved astronauts if any
+                // 恢复暂存乘员
                 string partName = part.name;
                 if (savedAstronauts.ContainsKey(partName) && savedAstronauts[partName].Count > 0)
                 {
                     var names = new List<string>(savedAstronauts[partName]); // Copy
-                    var restored = new List<string>();
+                    bool isRevert = Patch_GameManager_LoadSave.isRevertLoad;
+                    var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
 
                     foreach (string name in names)
                     {
@@ -850,14 +856,25 @@ namespace AstronautUnlocker
                         {
                             if (AstronautState.main != null)
                             {
-                                // Use seat.Board() which calls AddCrew + sets astronaut.Value
+                                // 只恢复当前存活、或本次任务死亡被回退复活的乘员。
+                                // 否则建筑新火箭可能错误复活已死乘员。
+                                var data = AstronautState.main.GetAstronautByName(name);
+                                bool alive = data != null && data.alive;
+                                bool diedThisMissionReverted = isRevert && !alive &&
+                                    (baseline == null || !baseline.Contains(name));
+                                if (!alive && !diedThisMissionReverted)
+                                {
+                                    
+                                    continue;
+                                }
+
+                                // Board 会调用 AddCrew 并设置乘员名
                                 seat.Board(name, 1.0, float.NegativeInfinity);
-                                restored.Add(name);
+                                
                             }
                             else
                             {
-                                // AstronautState not ready yet — just set the name,
-                                // AddCrew will be called in OnWorldSceneLoaded
+                                // AstronautState 未就绪时仅设名字，进入世界时再 AddCrew
                                 var seatAstroRef = Traverse.Create(seat)
                                     .Field("astronaut").GetValue<String_Reference>();
                                 if (seatAstroRef != null)
@@ -866,23 +883,18 @@ namespace AstronautUnlocker
                         }
                         catch (Exception be)
                         {
-                            Debug.Log("[AU] Restore astronaut error: " + be.Message);
+                            
                         }
                     }
 
-                    // Only clear successfully restored names; keep others for retry
-                    if (restored.Count > 0)
-                    {
-                        savedAstronauts[partName] = names.Except(restored).ToList();
-                        SaveEvaConfig();
-                    }
+                    // 保留 savedAstronauts，供后续回退恢复；离开世界时再清空
                 }
 
-                Debug.Log("[AU] Injected CrewModule on part: " + part.name + " (ID: " + partId + ")");
+                
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] InjectCrewModule error: " + e);
+                
             }
         }
 
@@ -897,14 +909,14 @@ namespace AstronautUnlocker
                     foreach (var c in cols)
                         bounds.Encapsulate(c.bounds);
 
-                    // Hatch at top of part (local coordinates)
+                    // 舱口位于部件顶部（局部坐标）
                     Vector3 topLocal = part.transform.InverseTransformPoint(
                         new Vector3(bounds.center.x, bounds.max.y, 0));
                     return new Vector2(topLocal.x, topLocal.y);
                 }
             }
             catch { }
-            return new Vector2(0f, 0.5f); // Default fallback
+            return new Vector2(0f, 0.5f); // 默认回退
         }
 
         public static void RemoveCrewModule(Part part)
@@ -913,13 +925,13 @@ namespace AstronautUnlocker
             {
                 int partId = part.GetInstanceID();
 
-                // Only remove if we injected it
+                // 仅移除由本模组注入的
                 if (!injectedPartIds.Contains(partId)) return;
 
                 CrewModule[] crews = part.GetComponentsInChildren<CrewModule>(true);
                 foreach (var crew in crews)
                 {
-                    // Save astronaut names before removing
+                    // 移除前暂存乘员名
                     if (crew.seats != null)
                     {
                         var savedList = new List<string>();
@@ -939,12 +951,12 @@ namespace AstronautUnlocker
                 }
                 injectedPartIds.Remove(partId);
                 ClearModuleCache(part);
-                SaveEvaConfig(); // Persist astronaut names to JSON
-                Debug.Log("[AU] Removed CrewModule from part: " + part.name);
+                SaveEvaConfig(); // 持久化乘员名到 JSON
+                
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] RemoveCrewModule error: " + e);
+                
             }
         }
 
@@ -961,7 +973,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] ClearModuleCache error: " + e);
+                
             }
         }
 
@@ -971,7 +983,7 @@ namespace AstronautUnlocker
             {
                 if (BuildManager.main != null)
                 {
-                    // Build mode
+                    // 建造模式
                     AttachableStatsMenu menu = BuildManager.main.buildMenus.partMenu;
                     if (menu != null)
                     {
@@ -983,7 +995,7 @@ namespace AstronautUnlocker
                 }
                 else
                 {
-                    // World mode
+                    // 世界模式
                     AttachableStatsMenu menu = UnityEngine.Object.FindObjectOfType<AttachableStatsMenu>(true);
                     if (menu != null)
                     {
@@ -996,7 +1008,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] ReopenPartMenu error: " + e);
+                
             }
         }
     }
@@ -1054,12 +1066,12 @@ namespace AstronautUnlocker
                     Traverse.Create(__instance).Method("Save").GetValue();
                 }
 
-                return false; // Skip original method
+                return false; // 跳过原方法
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] CreateAstronaut prefix error: " + e);
-                return true; // Fall back to original on error
+                
+                return true; // 出错时回退到原方法
             }
         }
     }
@@ -1073,29 +1085,77 @@ namespace AstronautUnlocker
         }
     }
 
+    // ============================================================
+    // 回退复活、正常进入保持死亡。
+    // 判断依据：LoadSave 来自 LoadPersistentAndLaunch（正常进入）则保存死亡；
+    // 来自其他回退则复活本次任务死亡的乘员。
+    // ============================================================
+    [HarmonyPatch(typeof(GameManager), "LoadPersistentAndLaunch")]
+    public class Patch_GameManager_LoadPersistentAndLaunch
+    {
+        public static bool isPersistentEntry;
+        // 任务开始前已死亡的乘员名单（回退时不得复活）
+        public static List<string> launchDeadBaseline;
+
+        static void Prefix()
+        {
+            // 标记下一次 LoadSave 为正常进入
+            isPersistentEntry = true;
+
+            // 记录任务开始前的死亡基线
+            launchDeadBaseline = null;
+            if (AstronautState.main?.state?.astronauts != null)
+            {
+                foreach (var a in AstronautState.main.state.astronauts)
+                {
+                    if (!a.alive)
+                    {
+                        if (launchDeadBaseline == null)
+                            launchDeadBaseline = new List<string>();
+                        launchDeadBaseline.Add(a.astronautName);
+                    }
+                }
+            }
+            
+        }
+    }
+
     [HarmonyPatch(typeof(GameManager), "LoadSave")]
     public class Patch_GameManager_LoadSave
     {
         private static List<WorldSave.Astronauts.Data> backupAstronauts;
         private static List<string> backupCrewBuild;
+        private static bool isPersistentEntry;
+        // 标记当前 LoadSave 是否为回退（非正常进入）
+        public static bool isRevertLoad;
 
         static void Prefix(WorldSave save)
         {
             try
             {
-                // --- Backup in-memory state before LoadSave overwrites it ---
+                // 消费正常进入标记
+                isPersistentEntry = Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry;
+                Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry = false;
+                // 非正常进入的 LoadSave 即为回退
+                isRevertLoad = !isPersistentEntry;
+                
+
+                // 回退会重建世界，注入部件座椅不会被序列化，需先捕获乘员名
+                if (isRevertLoad)
+                {
+                    CaptureInjectedCrewToSaved();
+                }
+
+                // --- 备份覆盖前的内存状态 ---
                 if (AstronautState.main?.state?.astronauts != null &&
                     AstronautState.main.state.astronauts.Count > 0)
                 {
                     backupAstronauts = new List<WorldSave.Astronauts.Data>(
                         AstronautState.main.state.astronauts);
-                    foreach (var a in backupAstronauts)
-                        Debug.Log("[AU] Prefix backup astronaut: " + a.astronautName + " alive=" + a.alive);
                 }
 
-                // backupCrewBuild is ONLY for Build→World transition (preserve crew_Build).
-                // Do NOT use destroyedSeatAstronauts here — those astronauts are dead
-                // and must NOT be re-added to crew_Build or crew_World.
+                // backupCrewBuild 仅用于建造到世界转换（保留 crew_Build）。
+                // 已死亡乘员不得重新加入 crew_Build/crew_World。
                 if (AstronautState.main?.crew_Build != null && AstronautState.main.crew_Build.Count > 0)
                 {
                     backupCrewBuild = new List<string>(AstronautState.main.crew_Build);
@@ -1108,7 +1168,7 @@ namespace AstronautUnlocker
                 if (save != null && save.astronauts == null)
                 {
                     save.astronauts = new WorldSave.Astronauts();
-                    Debug.Log("[AU] save.astronauts was null — created new");
+                    
                 }
                 if (save != null && save.astronauts != null)
                 {
@@ -1120,59 +1180,25 @@ namespace AstronautUnlocker
                         save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();
                 }
 
-                // --- Sync backup astronauts (incl. alive flag) into the save ---
-                // LoadSave uses save.astronauts.astronauts directly, so we must
-                // update the alive flag on EXISTING entries, not just add new ones.
+                // --- 将缺失的备份乘员注入存档 ---
+                // 不覆盖已有条目的 alive 标志，存档值是权威的（回退存档为 alive=true）
                 if (backupAstronauts != null && backupAstronauts.Count > 0 &&
                     save?.astronauts?.astronauts != null)
                 {
                     foreach (var astro in backupAstronauts)
                     {
-                        var existing = save.astronauts.astronauts
-                            .FirstOrDefault(a => a.astronautName == astro.astronautName);
-                        if (existing != null)
-                        {
-                            existing.alive = astro.alive;
-                        }
-                        else
+                        bool exists = save.astronauts.astronauts
+                            .Any(a => a.astronautName == astro.astronautName);
+                        if (!exists)
                         {
                             save.astronauts.astronauts.Add(astro);
+                            
                         }
                     }
                 }
 
-                // --- Handle destroyed astronauts (World→Build transition) ---
-                // These astronauts died in-flight. Mark them dead in the save and
-                // remove from crew_World/eva so they don't reappear as "in flight".
-                if (Patch_Seat_OnDestroy.destroyedSeatAstronauts.Count > 0 &&
-                    save?.astronauts != null)
-                {
-                    foreach (string name in Patch_Seat_OnDestroy.destroyedSeatAstronauts)
-                    {
-                        Debug.Log("[AU] Prefix handling destroyed astronaut: " + name);
-
-                        // Mark as dead in save's astronauts list
-                        var data = save.astronauts.astronauts?
-                            .FirstOrDefault(a => a.astronautName == name);
-                        if (data != null)
-                        {
-                            data.alive = false;
-                            Debug.Log("[AU] Prefix set " + name + " alive=false in save");
-                        }
-
-                        // Remove from crew_World (LoadSave ignores crew_World, but
-                        // the save file on disk should be correct for future loads)
-                        save.astronauts.crew_World?
-                            .RemoveAll(c => c.astronautName == name);
-
-                        // Remove from EVA list
-                        save.astronauts.eva?
-                            .RemoveAll(e => e.astronautName == name);
-                    }
-                }
-
-                // --- Handle backupCrewBuild (Build→World transition only) ---
-                // Ensure crew_Build astronauts are in crew_World for the World scene.
+                // --- 处理 backupCrewBuild（建造到世界转换）---
+                // 确保 crew_Build 乘员进入世界的 crew_World
                 if (backupCrewBuild != null && backupCrewBuild.Count > 0 &&
                     save?.astronauts != null)
                 {
@@ -1199,7 +1225,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Backup prefix error: " + e);
+                
             }
         }
 
@@ -1232,27 +1258,20 @@ namespace AstronautUnlocker
                     {
                         foreach (var astro in backupAstronauts)
                         {
-                            var existing = AstronautState.main.state.astronauts
-                                .FirstOrDefault(a => a.astronautName == astro.astronautName);
-                            if (existing != null)
-                            {
-                                existing.alive = astro.alive;
-                                Debug.Log("[AU] Postfix restored " + astro.astronautName +
-                                    " alive=" + astro.alive);
-                            }
-                            else
+                            // 仅添加缺失项，不覆盖 alive 标志（存档值为权威）
+                            bool exists = AstronautState.main.state.astronauts
+                                .Any(a => a.astronautName == astro.astronautName);
+                            if (!exists)
                             {
                                 AstronautState.main.state.astronauts.Add(astro);
-                                Debug.Log("[AU] Postfix added missing astronaut " + astro.astronautName);
+                                
                             }
                         }
                     }
                     backupAstronauts = null;
                 }
 
-                // Restore crew_Build (only for Build→World transition).
-                // destroyedSeatAstronauts are NOT in backupCrewBuild, so dead
-                // astronauts won't be re-added to crew_Build.
+                // 恢复 crew_Build（仅建造到世界转换）。已死亡乘员不在 backupCrewBuild 中
                 if (backupCrewBuild != null && backupCrewBuild.Count > 0)
                 {
                     if (AstronautState.main?.crew_Build != null)
@@ -1269,10 +1288,138 @@ namespace AstronautUnlocker
                 }
 
                 Patch_Seat_OnDestroy.destroyedSeatAstronauts.Clear();
+
+                // --- 回退复活 ---
+                // 这是真正的回退（非正常进入）。存档可能带 stale alive=false，
+                // 仅复活任务开始前仍存活、本次任务死亡的乘员。
+                
+                if (!isPersistentEntry && AstronautState.main?.state?.astronauts != null)
+                {
+                    var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
+                    foreach (var member in AstronautState.main.state.astronauts)
+                    {
+                        if (!member.alive &&
+                            (baseline == null || !baseline.Contains(member.astronautName)))
+                        {
+                            member.alive = true;
+                            
+                        }
+                    }
+                }
+                isPersistentEntry = false;
+                isRevertLoad = false;
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Restore postfix error: " + e);
+                
+            }
+        }
+
+        // 回退前捕获注入部件座椅上的乘员名到 savedAstronauts，
+        // 供重建后的座椅恢复（回退会清空世界）
+        private static void CaptureInjectedCrewToSaved()
+        {
+            try
+            {
+                if (GameManager.main == null) return;
+                CrewModule[] allCrews = UnityEngine.Object.FindObjectsOfType<CrewModule>(true);
+                bool changed = false;
+                foreach (CrewModule crew in allCrews)
+                {
+                    if (crew == null || crew.seats == null) continue;
+                    Part part = Traverse.Create(crew).Field("part").GetValue<Part>();
+                    if (part == null) continue;
+                    if (!AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID())) continue;
+                    if (part.name == null) continue;
+
+                    var names = new List<string>();
+                    foreach (var seat in crew.seats)
+                    {
+                        if (seat == null || seat.astronaut == null) continue;
+                        if (!string.IsNullOrEmpty(seat.astronaut.Value))
+                            names.Add(seat.astronaut.Value);
+                    }
+                    if (names.Count == 0) continue;
+
+                    if (!AstronautUnlockerMod.savedAstronauts.ContainsKey(part.name))
+                        AstronautUnlockerMod.savedAstronauts[part.name] = new List<string>();
+                    foreach (string n in names)
+                    {
+                        if (!AstronautUnlockerMod.savedAstronauts[part.name].Contains(n))
+                        {
+                            AstronautUnlockerMod.savedAstronauts[part.name].Add(n);
+                            changed = true;
+                        }
+                    }
+                    
+                }
+                if (changed)
+                    AstronautUnlockerMod.SaveEvaConfig();
+            }
+            catch (Exception e)
+            {
+                
+            }
+        }
+    }
+
+    // --- 正常退出世界清空 savedAstronauts ---
+    // 离开世界（新建火箭 / 返回中心 / 主菜单）即进入全新上下文。
+    // 清空可防止此前捕获的（可能已死亡）乘员被自动恢复到新建造中。
+    [HarmonyPatch(typeof(GameManager), "ExitToBuild")]
+    public class Patch_GameManager_ExitToBuild_ClearSaved
+    {
+        static void Prefix()
+        {
+            AstronautUnlockerMod.ClearSavedAstronauts("ExitToBuild");
+        }
+    }
+
+    [HarmonyPatch(typeof(GameManager), "ExitToHub")]
+    public class Patch_GameManager_ExitToHub_ClearSaved
+    {
+        static void Prefix()
+        {
+            AstronautUnlockerMod.ClearSavedAstronauts("ExitToHub");
+        }
+    }
+
+    [HarmonyPatch(typeof(GameManager), "ExitToMainMenu")]
+    public class Patch_GameManager_ExitToMainMenu_ClearSaved
+    {
+        static void Prefix()
+        {
+            AstronautUnlockerMod.ClearSavedAstronauts("ExitToMainMenu");
+        }
+    }
+
+    // --- 回退到建造也复活 ---
+    // RevertToBuild 不走 LoadSave，而是用 deleteRevert=true 持久化发射快照。
+    // 此处同样复活，使回退撤销死亡；正常保存/退出（deleteRevert=false）保持死亡。
+    [HarmonyPatch(typeof(SavingCache), "SaveWorldPersistent")]
+    public class Patch_SavingCache_SaveWorldPersistent_ReviveOnRevertBuild
+    {
+        static void Prefix(WorldSave new_WorldPersistent, bool deleteRevert)
+        {
+            if (!deleteRevert) return;
+            try
+            {
+                if (new_WorldPersistent?.astronauts?.astronauts == null) return;
+                var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
+                foreach (var sd in new_WorldPersistent.astronauts.astronauts)
+                {
+                    // 仅复活本次任务死亡的乘员；任务前已死亡的保持死亡
+                    if (!sd.alive &&
+                        (baseline == null || !baseline.Contains(sd.astronautName)))
+                    {
+                        sd.alive = true;
+                        
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                
             }
         }
     }
@@ -1284,14 +1431,14 @@ namespace AstronautUnlocker
         {
             if (AstronautManager.main == null || AstronautManager.main.fadeToBlack == null)
             {
-                Debug.Log("[AU] fadeToBlack is null, skipping death animation");
+                
                 try
                 {
                     __instance.astronaut.alive = false;
                 }
                 catch { }
                 AstronautManager.DestroyEVA(__instance, death: true);
-                return false; // Skip original StartDeathAnimation
+                return false; // 跳过原 StartDeathAnimation
             }
             return true;
         }
@@ -1385,20 +1532,24 @@ namespace AstronautUnlocker
                         new List<WorldSave.Astronauts.Data>();
 
                 AstronautState.State state = NativeAstronautUI.SafeGetAstronautState(astronautName);
+                
 
                 if (state == AstronautState.State.Available)
                 {
+                    
                     AstronautState.main.AddCrew(astronautName);
                     tr.Method("AddSeatedAstronaut").GetValue();
                     return false;
                 }
                 else if (state == AstronautState.State.CrewWorld)
                 {
+                    
                     tr.Method("AddSeatedAstronaut").GetValue();
                     return false;
                 }
                 else if (state == AstronautState.State.CrewBuild)
                 {
+                    
                     if (BuildManager.main == null)
                     {
                         AstronautState.main.crew_Build.Remove(astronautName);
@@ -1409,6 +1560,20 @@ namespace AstronautUnlocker
                 }
                 else
                 {
+                    
+                    // 回退时存档的 alive 标志已过时（本次任务死亡但被回退复活）。
+                    // 保留座椅乘员不清空，但仅限本次任务死亡的乘员，任务前已死亡的不恢复。
+                    var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
+                    bool deadBeforeLaunch = baseline != null && baseline.Contains(astronautName);
+                    if (Patch_GameManager_LoadSave.isRevertLoad && !deadBeforeLaunch)
+                    {
+                        AstronautState.main.AddCrew(astronautName);
+                        tr.Method("AddSeatedAstronaut").GetValue();
+                        
+                        return false;
+                    }
+
+                    
                     astronautRef.Value = "";
                     bool externalSeat = tr.Field<bool>("externalSeat").Value;
                     if (externalSeat)
@@ -1422,7 +1587,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Seat.OnStart prefix error: " + e);
+                
                 return false;
             }
         }
@@ -1442,43 +1607,40 @@ namespace AstronautUnlocker
                 string astronautName = astronautRef?.Value;
 
                 if (string.IsNullOrEmpty(astronautName))
-                    return false; // No astronaut, skip
+                    return false; // 无乘员则跳过
 
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
 
-                Debug.Log("[AU] Seat.OnDestroy: astronaut=" + astronautName +
-                    " GameManager=" + (GameManager.main != null) +
-                    " BuildManager=" + (BuildManager.main != null));
+                
 
-                // Remove from crew_Build (Build scene) or crew_World (World scene)
+                // 从 crew_Build（建造）或 crew_World（世界）移除
                 if (AstronautState.main != null)
                 {
                     AstronautState.main.RemoveCrew(astronautName);
 
-                    // In World scene (GameManager.main != null), mark astronaut as dead.
-                    // This is the original game behavior — destroying a capsule kills the crew.
+                    // 世界场景中舱体销毁即乘员死亡（原游戏行为）
                     if (GameManager.main != null)
                     {
                         var data = AstronautState.main.GetAstronautByName(astronautName);
                         if (data != null)
                         {
                             data.alive = false;
-                            Debug.Log("[AU] Seat.OnDestroy: marked " + astronautName + " alive=false");
+                            
                         }
                         else
                         {
-                            Debug.Log("[AU] Seat.OnDestroy: WARNING GetAstronautByName returned null for " + astronautName);
+                            
                         }
                     }
                 }
 
-                return false; // Skip original
+                return false; // 跳过原方法
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Seat.OnDestroy prefix error: " + e);
-                return true; // Fall back to original on error
+                
+                return true; // 出错时回退到原方法
             }
         }
     }
@@ -1544,11 +1706,9 @@ namespace AstronautUnlocker
         }
     }
 
-    // EndMissionMenu checks HasCrew: if true, forces destroy flow (no recovery).
-    // The mod enables astronauts on PC, so seats have astronaut names, causing
-    // HasCrew=true and preventing recovery. Patch it to return false so the
-    // normal recover/destroy flow is used. Recovery's Complete() still exits
-    // all seats properly.
+    // EndMissionMenu 检查 HasCrew：为 true 会强制销毁流程（无法回收）。
+    // 本模组在 PC 端启用乘员，座椅有名字导致 HasCrew=true 阻止回收。
+    // 补丁返回 false 以走正常回收/销毁流程。
     [HarmonyPatch(typeof(CrewModule), "get_HasCrew")]
     public class Patch_CrewModule_HasCrew
     {
@@ -1593,7 +1753,7 @@ namespace AstronautUnlocker
                             try { dm.Detach(data); }
                             catch (Exception e)
                             {
-                                Debug.Log("[AU] DetachModule.Detach error: " + e);
+                                
                             }
                         });
                         patchedParts.Add(id);
@@ -1608,7 +1768,7 @@ namespace AstronautUnlocker
                             try { sm.Split(data); }
                             catch (Exception e)
                             {
-                                Debug.Log("[AU] SplitModule.Split error: " + e);
+                                
                             }
                         });
                         patchedParts.Add(id);
@@ -1618,7 +1778,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] UseParts prefix error: " + e);
+                
                 return true;
             }
         }
@@ -1630,8 +1790,8 @@ namespace AstronautUnlocker
             {
                 if (regions == null) return;
 
-                // PC parts have 0 persistent events, so original UseParts skipped them.
-                // Manually invoke onPartUsed for those parts using the result data.
+                // PC 部件无持久化事件，原 UseParts 会跳过它们。
+                // 手动用结果数据调用 onPartUsed。
                 if (__result != null && __result.Length == regions.Length)
                 {
                     for (int i = 0; i < regions.Length; i++)
@@ -1667,7 +1827,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] UseParts postfix error: " + e);
+                
             }
         }
     }
@@ -1684,17 +1844,16 @@ namespace AstronautUnlocker
                     AttachableStatsMenu menu = UnityEngine.Object.FindObjectOfType<AttachableStatsMenu>(includeInactive: true);
                     if (menu == null)
                     {
-                        Debug.Log("[AU] OpenPartMenu: AttachableStatsMenu NULL in World! " +
-                            "Using MenuGenerator fallback.");
+                        
                         SeatMenuFallback.Show(__instance, canBoardWorld);
                         return false;
                     }
                 }
-                return true; // Let original run
+                return true; // 让原方法运行
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] OpenPartMenu prefix error: " + e);
+                
                 return true;
             }
         }
@@ -1712,7 +1871,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] OpenPartMenu_Seats prefix error: " + e);
+                
             }
         }
     }
@@ -1726,7 +1885,7 @@ namespace AstronautUnlocker
             {
                 var tr = Traverse.Create(__instance);
 
-                // Check if this is our injected CrewModule
+                // 判断是否为注入的 CrewModule
                 SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
                 bool isInjected = part != null &&
                     AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID());
@@ -1746,8 +1905,7 @@ namespace AstronautUnlocker
                     .GetValue<SFS.Variables.Bool_Reference>();
                 bool needsCrew = needsCrewRef != null && needsCrewRef.Value;
 
-                // For injected parts: ALWAYS hasControl = true (they don't need crew to control)
-                // For native parts: original logic
+                // 注入部件恒为 hasControl=true；原生部件走原逻辑
                 bool hasControl = isInjected
                     ? true
                     : (disableAstronauts || anyHasAstronaut || !needsCrew);
@@ -1779,12 +1937,12 @@ namespace AstronautUnlocker
                 if (part != null && part.mass != null)
                     part.mass.Value = baseMass + seatMass;
 
-                return false; // Skip original OnSeatChange entirely
+                return false; // 完全跳过原 OnSeatChange
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] OnSeatChange Prefix error: " + e);
-                return true; // Fall back to original on error
+                
+                return true; // 出错时回退到原方法
             }
         }
     }
@@ -1841,7 +1999,7 @@ namespace AstronautUnlocker
                             }
                             catch (Exception e)
                             {
-                                Debug.Log("[AU] EVA action error: " + e);
+                                
                             }
                         },
                         CloseMode.Current));
@@ -1857,7 +2015,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] SeatMenuFallback.Show error: " + e);
+                
             }
         }
     }
@@ -1873,13 +2031,13 @@ namespace AstronautUnlocker
                 if (__instance.flagPrefab != null)
                     return true; // Original prefab exists, use original
 
-                Debug.Log("[AU] SpawnFlag: flagPrefab is NULL, creating fallback flag");
+                
                 __result = FlagFallback.CreateFlag(location, direction);
                 return false;
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] SpawnFlag prefix error: " + e);
+                
                 return true;
             }
         }
@@ -1909,13 +2067,12 @@ namespace AstronautUnlocker
                     mapIcon.SetRotation(holder.rotation.eulerAngles.z + 90f);
                 }
 
-                Debug.Log("[AU] Flag.Start: holder=" + (holder != null ? "OK" : "NULL") +
-                    ", mapIcon=" + (mapIcon != null ? "OK" : "NULL"));
+                
                 return false; // Skip original (handles null safely)
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Flag.Start prefix error: " + e);
+                
                 return true;
             }
         }
@@ -1939,7 +2096,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] PlantFlag prefix error: " + e);
+                
             }
             return true;
         }
@@ -2065,7 +2222,7 @@ namespace AstronautUnlocker
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_FlagBtn");
                     plantFlagButton = ModGUIBuilder.CreateButton(
                         flagBtnHolder.transform, 150, 50,
-                        -450, -300,
+                        450, -250,
                         () =>
                         {
                             if (AstronautManager.main != null)
@@ -2085,7 +2242,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] UpdatePlantFlagButton error: " + e);
+                
             }
         }
     }
@@ -2139,7 +2296,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] PickGrid refresh error: " + e);
+                
             }
         }
 
@@ -2298,7 +2455,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] RefreshCrewModuleVisuals error: " + e);
+                
             }
         }
     }
@@ -2424,7 +2581,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Assign error: " + e);
+                
             }
         }
 
@@ -2452,7 +2609,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Create dialog error: " + e);
+                
             }
         }
 
@@ -2494,7 +2651,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Fire dialog error: " + e);
+                
             }
         }
 
@@ -2507,8 +2664,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] SafeGetAstronautState error for " +
-                    astronautName + ": " + e.Message);
+                
                 var data = AstronautState.main?.state?.astronauts?
                     .FirstOrDefault(a => a.astronautName == astronautName);
                 if (data != null && !data.alive)
@@ -2744,7 +2900,7 @@ namespace AstronautUnlocker
     }
             catch (Exception e)
             {
-                Debug.Log("[AU] DetachModule.Detach diag error: " + e);
+                
             }
         }
     }
@@ -2768,7 +2924,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] SpawnEVA buoyancy patch error: " + e.Message);
+                
             }
         }
     }
@@ -2841,7 +2997,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Buoyancy error: " + e.Message);
+                
             }
         }
     }
@@ -2903,7 +3059,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] GetPickTags fuel pipe patch error: " + e.Message);
+                
             }
         }
     }
@@ -2917,7 +3073,7 @@ namespace AstronautUnlocker
             {
                 if (__instance.surface_In == null || __instance.surface_Out == null)
                 {
-                    Debug.Log("[AU] FuelPipeModule.FindNeighbours: skipping (surface null)");
+                    
                     return false;
                 }
                 return true;
@@ -2938,14 +3094,12 @@ namespace AstronautUnlocker
             {
                 if (__instance.separationSurface == null)
                 {
-                    Debug.Log("[AU] DetachModule.Detach skipped: separationSurface is null on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
+                    
                     return false;
                 }
                 if (__instance.separationSurface.surfaces == null || __instance.separationSurface.surfaces.Count == 0)
                 {
-                    Debug.Log("[AU] DetachModule.Detach skipped: separationSurface.surfaces is null/empty on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
+                    
                     return false;
                 }
                 var rocketProp = typeof(DetachModule).GetProperty("Rocket",
@@ -2953,14 +3107,13 @@ namespace AstronautUnlocker
                 object rocket = rocketProp?.GetValue(__instance);
                 if (rocket == null)
                 {
-                    Debug.Log("[AU] DetachModule.Detach skipped: Rocket is null on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
+                    
                     return false;
                 }
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] DetachModule.Detach prefix error: " + e);
+                
             }
             return true;
         }
@@ -3081,7 +3234,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] TeleportMenu.ConfirmTeleport prefix error: " + e);
+                
                 return true; // Fall back to original on error
             }
         }
@@ -3111,7 +3264,7 @@ namespace AstronautUnlocker
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_TeleportBtn");
                     teleportButton = ModGUIBuilder.CreateButton(
                         teleportBtnHolder.transform, 150, 50,
-                        -450, -200,
+                        450, -200,
                         () =>
                         {
                             try
@@ -3122,12 +3275,12 @@ namespace AstronautUnlocker
                                 }
                                 else
                                 {
-                                    Debug.Log("[AU] TeleportMenu.main is null");
+                                    
                                 }
                             }
                             catch (Exception e)
                             {
-                                Debug.Log("[AU] Teleport button error: " + e);
+                                
                             }
                         },
                         "Teleport");
@@ -3142,7 +3295,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] TeleportButtonHelper error: " + e);
+                
             }
         }
     }
@@ -3191,7 +3344,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] AstronautDashboardHelper error: " + e);
+                
             }
         }
 
@@ -3220,14 +3373,14 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] UpdateTelemetry error: " + e);
+                
             }
         }
     }
 
-    // ===== EVA Injection Harmony Patches =====
+    // ===== EVA 注入 Harmony 补丁 =====
 
-    // Adds "Enable EVA" toggle to mod control parts' right-click menu
+    // 在模组控制部件的右键菜单添加"启用 EVA"开关
     [HarmonyPatch(typeof(Part), "DrawPartStats")]
     public class Patch_Part_DrawPartStats_EVA
     {
@@ -3235,19 +3388,19 @@ namespace AstronautUnlocker
         {
             try
             {
-                // Only show in build or world mode (not pick grid)
+                // 仅在建造/世界模式显示（非部件选择界面）
                 if (!settings.build && !settings.game) return;
 
-                // Must have ControlModule (it's a control part)
+                // 需为控制部件
                 if (!__instance.HasModule<ControlModule>()) return;
 
-                // Skip parts that already have a NATIVE CrewModule (vanilla crew parts)
+                // 跳过自带原生 CrewModule 的部件
                 if (AstronautUnlockerMod.HasNativeCrewModule(__instance)) return;
 
                 string partName = __instance.name;
                 Part capturedPart = __instance;
 
-                // Draw EVA toggle at bottom (priority -500 = very low = bottom of menu)
+                // 在菜单底部绘制 EVA 开关（priority -500 = 最底部）
                 drawer.DrawToggle(-500,
                     () => "Enable EVA",
                     () =>
@@ -3269,17 +3422,15 @@ namespace AstronautUnlocker
                                 AstronautUnlockerMod.RemoveCrewModule(capturedPart);
                             }
 
-                            // Clear module cache so HasModule<CrewModule> returns correct result
+                            // 清模块缓存使 HasModule<CrewModule> 返回正确结果
                             AstronautUnlockerMod.ClearModuleCache(capturedPart);
 
-                            // Do NOT close/reopen the menu — that causes the menu arrow to
-                            // "teleport" because ReopenPartMenu uses world coordinates instead
-                            // of screen coordinates. The toggle's getValue callback will
-                            // automatically reflect the new state on the next menu redraw.
+                            // 不关闭/重开菜单，避免菜单箭头因坐标问题"瞬移"。
+                            // getValue 回调会在下次重绘时自动反映新状态。
                         }
                         catch (Exception e)
                         {
-                            Debug.Log("[AU] EVA toggle action error: " + e);
+                            
                         }
                     },
                     () => AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
@@ -3288,12 +3439,12 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] DrawPartStats EVA toggle error: " + e);
+                
             }
         }
     }
 
-    // Auto-inject CrewModule for configured parts when they are initialized
+    // 启用 EVA 的部件初始化时自动注入 CrewModule
     [HarmonyPatch(typeof(Part), "InitializePart")]
     public class Patch_Part_InitializePart_EVA
     {
@@ -3301,15 +3452,13 @@ namespace AstronautUnlocker
         {
             try
             {
-                // Already has CrewModule — skip
+                // 已有 CrewModule 或非控制部件则跳过
                 if (__instance.HasModule<CrewModule>()) return;
-
-                // No ControlModule — skip
                 if (!__instance.HasModule<ControlModule>()) return;
 
                 string partName = __instance.name;
 
-                // Check if EVA is enabled for this part
+                // 该部件启用了 EVA 才注入
                 if (AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
                     AstronautUnlockerMod.evaConfig[partName])
                 {
@@ -3319,12 +3468,12 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] InitializePart EVA auto-inject error: " + e);
+                
             }
         }
     }
 
-    // Widens EVA boarding distance for large mod capsules (20 → 50 units)
+    // 加宽大型模组舱体的 EVA 登舱距离（20 → 50）
     [HarmonyPatch(typeof(CrewModule), "EVA_Board")]
     public class Patch_EVA_Board_Distance
     {
@@ -3339,10 +3488,9 @@ namespace AstronautUnlocker
         }
     }
 
-    // Before launch: save astronaut names from injected CrewModules to savedAstronauts.
-    // The injected CrewModule is NOT in the part's JSON definition, so PartSave.CreateSaves()
-    // will NOT serialize seat.astronaut.Value. We must save them manually and restore in
-    // World scene when InjectCrewModule re-injects the CrewModule.
+    // 发射前把注入部件座椅上的乘员名存入 savedAstronauts。
+    // 注入的 CrewModule 不在部件 JSON 中，PartSave.CreateSaves() 不会序列化座椅乘员，
+    // 需手动保存并在世界场景重注入时恢复。
     [HarmonyPatch(typeof(BuildManager), "Launch")]
     public class Patch_BuildManager_Launch_SaveAstronauts
     {
@@ -3352,7 +3500,7 @@ namespace AstronautUnlocker
             {
                 if (BuildManager.main == null) return;
 
-                // Get all parts in the build grid
+                // 获取建造网格中的所有部件
                 PartHolder partsHolder = BuildManager.main.buildGrid.activeGrid.partsHolder;
                 if (partsHolder == null || partsHolder.parts == null) return;
 
@@ -3361,7 +3509,7 @@ namespace AstronautUnlocker
                     int partId = part.GetInstanceID();
                     if (!AstronautUnlockerMod.injectedPartIds.Contains(partId)) continue;
 
-                    // This is an injected part — save its astronaut names
+                    // 注入部件——保存其乘员名
                     CrewModule crew = part.GetComponentInChildren<CrewModule>(true);
                     if (crew == null || crew.seats == null) continue;
 
@@ -3377,17 +3525,16 @@ namespace AstronautUnlocker
                     if (savedList.Count > 0)
                     {
                         AstronautUnlockerMod.savedAstronauts[part.name] = savedList;
-                        Debug.Log("[AU] Launch: saved " + savedList.Count +
-                                  " astronaut(s) from injected part: " + part.name);
+                        
                     }
                 }
 
-                // Persist to JSON so they survive scene reload
+                // 持久化到 JSON，场景重载后仍保留
                 AstronautUnlockerMod.SaveEvaConfig();
             }
             catch (Exception e)
             {
-                Debug.Log("[AU] Launch Prefix save astronauts error: " + e);
+                
             }
         }
     }
