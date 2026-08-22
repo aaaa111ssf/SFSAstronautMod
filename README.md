@@ -32,21 +32,11 @@
 - 点击 "EVA Exit" 即可让宇航员出舱  
   **Click "EVA Exit" to let the astronaut exit the vehicle**
 
-### ■ 宇航员旗帜自定义 / Customize Astronaut Flags
-- 在 Hub 页面打开 **Astronauts**，点击目标宇航员后选择 **Customize Flag**。可选择白、红、蓝、绿、黄或紫色旗帜。
-  **Open Astronauts in the Hub, select an astronaut, then choose Customize Flag. White, red, blue, green, yellow, and purple presets are available.**
-- 如需使用图片，请把 `.png`、`.jpg` 或 `.jpeg` 文件放入游戏的持久化数据目录下的 `AstronautMod/Flags` 文件夹；在 **Set image file** 中输入文件名（例如 `mission.png`）。图片仍可叠加所选颜色。
-  **To use an image, copy a `.png`, `.jpg`, or `.jpeg` file into `AstronautMod/Flags` under the game's persistent-data directory, then enter its filename (for example, `mission.png`) in Set image file. The selected color remains available as an overlay.**
-- 设置会绑定到宇航员；之后由该宇航员插下的旗帜会记录独立外观。颜色、文件名与每面已插旗帜的位置均由模组配置保存，因此重新加载世界后仍会恢复。
-  **The setting belongs to the astronaut. Flags subsequently planted by that astronaut retain an independent appearance. The mod persists colors, filenames, and each planted flag's location so appearances are restored after loading a world.**
-- 选择 **Reset to native flag** 会取消该宇航员的自定义设置；其已插下的旗帜会立即还原为原生外观。
-  **Reset to native flag removes that astronaut's customization and immediately restores the native appearance on their existing flags.**
-
 ### ■ 插旗（World页面，EVA状态）/ Plant Flag (World Page, EVA Status)
 - 宇航员出舱后，屏幕右下角出现 "Plant Flag" 按钮  
   **After the astronaut exits, a "Plant Flag" button appears in the bottom-right corner**
-- 点击按钮在当前位置插旗；旗帜会使用当前宇航员的自定义外观。
-  **Click the button to plant a flag at the current position; the flag uses the current astronaut's customized appearance.**
+- 点击按钮在当前位置插旗  
+  **Click the button to plant a flag at the current position**
 - 注意：不能距已有旗帜30米以内插旗  
   **Note: Cannot plant a flag within 30 meters of an existing flag**
 
@@ -85,14 +75,6 @@
 ---
 
 ## 更新日志 / Changelog
-
-### 【v3.8.0 更新 / v3.8.0 Update】
-- 新增：**按宇航员配置旗帜外观**，支持六种颜色预设以及持久化 PNG/JPG 自定义图片。
-  **New: Per-astronaut flag appearance settings, with six color presets and persistent PNG/JPG custom images.**
-- 新增：每面已插旗帜按星球、位置与朝向保存样式；重新进入世界后会自动恢复，删除旗帜时会清理对应记录。
-  **New: Each planted flag stores its style by planet, location, and direction; styles restore automatically after loading and are removed when the flag is deleted.**
-- 调整：宇航员列表点击后显示操作菜单，集中提供旗帜自定义与解雇入口。
-  **Changed: Selecting an astronaut now opens an actions menu containing flag customization and discharge.**
 
 ### 【v3.38 更新 / v3.38 Update】
 - 修复：传送功能在禁用作弊时仍能使用 — 现在已禁用  

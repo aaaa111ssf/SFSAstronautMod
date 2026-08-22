@@ -35,7 +35,7 @@ namespace AstronautUnlocker
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.8.0";
+        public override string ModVersion => "3.7.2";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -46,7 +46,6 @@ namespace AstronautUnlocker
             ModifyDisableParts();
             CreatePersistentAstronautState();
             LoadEvaConfig();
-            FlagCustomization.Initialize();
             
         }
 
@@ -2032,40 +2031,14 @@ namespace AstronautUnlocker
                 if (__instance.flagPrefab != null)
                     return true; // Original prefab exists, use original
 
+                
                 __result = FlagFallback.CreateFlag(location, direction);
                 return false;
             }
             catch (Exception e)
             {
+                
                 return true;
-            }
-        }
-
-        static void Postfix(Flag __result, Location location, int direction)
-        {
-            try
-            {
-                FlagCustomization.OnFlagSpawned(__result, location, direction);
-            }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not apply custom flag appearance: " + e.Message);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "DestroyFlag")]
-    public class Patch_AstronautManager_DestroyFlag
-    {
-        static void Prefix(Flag flag)
-        {
-            try
-            {
-                FlagCustomization.ForgetFlag(flag);
-            }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not remove custom flag mapping: " + e.Message);
             }
         }
     }
@@ -2119,7 +2092,6 @@ namespace AstronautUnlocker
                         Menu.read.Open(() => "Cannot plant a flag on a gas giant — no solid surface!");
                         return false;
                     }
-                    FlagCustomization.BeginPlant(eva);
                 }
             }
             catch (Exception e)
@@ -2127,14 +2099,6 @@ namespace AstronautUnlocker
                 
             }
             return true;
-        }
-
-        static void Postfix()
-        {
-            // SpawnFlag consumes the pending style synchronously. Clearing here also prevents
-            // a failed original PlantFlag call (for example, a nearby-flag rejection) from
-            // leaking that style into a later unrelated SpawnFlag call.
-            FlagCustomization.CancelPendingPlant();
         }
     }
 
@@ -2567,7 +2531,7 @@ namespace AstronautUnlocker
                         string capturedName = name;
                         elements.Add(ButtonBuilder.CreateButton(carrier,
                             () => capturedName + " — " + statusText,
-                                () => OpenAstronautActions(capturedName),
+                                () => AskFire(capturedName),
                                 CloseMode.None));
                     }
                 }
@@ -2646,34 +2610,6 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 
-            }
-        }
-
-        private static void OpenAstronautActions(string name)
-        {
-            try
-            {
-                List<MenuElement> elements = new List<MenuElement>();
-                SizeSyncerBuilder.Carrier carrier;
-                elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
-                elements.Add(TextBuilder.CreateText(() => name));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Customize Flag",
-                    () => FlagCustomization.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
-                    CloseMode.Current));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Discharge",
-                    () => AskFire(name),
-                    CloseMode.Current));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Back",
-                    () => ShowMenu(null, null),
-                    CloseMode.Current));
-                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
-            }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not open astronaut actions: " + e.Message);
             }
         }
 
