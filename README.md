@@ -32,11 +32,21 @@
 - 点击 "EVA Exit" 即可让宇航员出舱  
   **Click "EVA Exit" to let the astronaut exit the vehicle**
 
+### ■ 宇航员旗帜自定义 / Customize Astronaut Flags
+- 在 Hub 页面打开 **Astronauts**，点击目标宇航员后选择 **Customize Flag**。可选择白、红、蓝、绿、黄或紫色旗帜。
+  **Open Astronauts in the Hub, select an astronaut, then choose Customize Flag. White, red, blue, green, yellow, and purple presets are available.**
+- 如需使用图片，请把 `.png`、`.jpg` 或 `.jpeg` 文件放入游戏安装目录下的 `Mods/AstronautMod/Flags` 文件夹；在 **Set image file** 中输入文件名（例如 `mission.png`）。旧版持久化数据目录仍可读取，以避免既有配置失效。
+  **To use an image, copy a `.png`, `.jpg`, or `.jpeg` file into `Mods/AstronautMod/Flags` under the game installation directory, then enter its filename (for example, `mission.png`) in Set image file. The previous persistent-data location remains readable for compatibility.**
+- 设置会绑定到宇航员；之后由该宇航员插下的旗帜会记录独立外观。颜色、文件名与每面已插旗帜的位置均由模组配置保存，因此重新加载世界后仍会恢复。
+  **The setting belongs to the astronaut. Flags subsequently planted by that astronaut retain an independent appearance. The mod persists colors, filenames, and each planted flag's location so appearances are restored after loading a world.**
+- 选择 **Reset to native flag** 会取消该宇航员的自定义设置；其已插下的旗帜会立即还原为原生外观。
+  **Reset to native flag removes that astronaut's customization and immediately restores the native appearance on their existing flags.**
+
 ### ■ 插旗（World页面，EVA状态）/ Plant Flag (World Page, EVA Status)
 - 宇航员出舱后，屏幕右下角出现 "Plant Flag" 按钮  
   **After the astronaut exits, a "Plant Flag" button appears in the bottom-right corner**
-- 点击按钮在当前位置插旗  
-  **Click the button to plant a flag at the current position**
+- 点击按钮在当前位置插旗；旗帜会使用当前宇航员的自定义外观。
+  **Click the button to plant a flag at the current position; the flag uses the current astronaut's customized appearance.**
 - 注意：不能距已有旗帜30米以内插旗  
   **Note: Cannot plant a flag within 30 meters of an existing flag**
 
@@ -50,31 +60,17 @@
 
 ---
 
-## 诊断日志 / Diagnostic Logs
-
-查看游戏日志文件：  
-**View game log file at:**
-- Windows: `%APPDATA%/../LocalLow/Stefo Mai Morojna/Spaceflight Simulator/Player.log`
-- 搜索 `[AstronautMod]` 或 `[AstronautUnlocker]` 查看模组日志  
-  **Search for `[AstronautMod]` or `[AstronautUnlocker]` to view mod logs**
-
-关键日志说明 / Key Log Entries:
-
-| 日志 / Log | 说明 / Description |
-|---|---|
-| `"challengesButton found at ..."` | 找到成就按钮，Astronauts按钮已放置在旁边 / Achievements button found, Astronauts button placed next to it |
-| `"No astronauts in assign mode, auto-opening create dialog"` | 蓝图中无宇航员，自动打开创建对话框 / No astronauts in blueprint, auto-opening create dialog |
-| `"RockSelector.main exists, rockInstances: N"` | 石头系统正常，N个石头已注册 / Rock system normal, N rocks registered |
-| `"Created fallback RockSelector"` | RockSelector不存在，已创建回退 / RockSelector does not exist, fallback created |
-| `"flagPrefab is NULL and no resources found"` | 旗帜预制体缺失，将使用代码生成 / Flag prefab missing, will use code-generated fallback |
-| `"Fallback flag created at ..."` | 简易旗帜已创建 / Simple flag created |
-| `"Plant Flag button created (EVA active)"` | 插旗按钮已显示 / Plant Flag button displayed |
-| `"PlantFlag called by XXX, flags now: N"` | 插旗成功 / Flag planted successfully |
-| `"Seat.OnStart: XXX is CrewWorld, seat PRESERVED"` | 座位已保留 / Seat preserved |
-
----
-
 ## 更新日志 / Changelog
+
+### 【v3.8 更新 / v3.8 Update】
+- 新增：**按宇航员配置旗帜外观**，支持六种颜色预设以及持久化 PNG/JPG 自定义图片；默认设置下仍使用原版旗帜。
+  **New: Per-astronaut flag appearance settings, with six color presets and persistent PNG/JPG custom images; the native flag remains unchanged by default.**
+- 新增：自定义图片旗帜使用无边框旗面与单根黑色竖杆；旗面保持正向，特殊比例图片会保留轮廓。
+  **New: Image flags use an unframed custom face with one black vertical pole; artwork remains upright and non-rectangular flags preserve their silhouette.**
+- 修复：EVA 控制交接后偶发的 “No control” 状态，以及 EVA 时顶部火箭统计显示零值的问题。
+  **Fix: Occasional “No control” after EVA handoff and zero-value rocket statistics shown during EVA.**
+- 调整：宇航员列表点击后显示操作菜单，集中提供旗帜自定义与解雇入口。
+  **Changed: Selecting an astronaut now opens an actions menu containing flag customization and discharge.**
 
 ### 【v3.38 更新 / v3.38 Update】
 - 修复：传送功能在禁用作弊时仍能使用 — 现在已禁用  

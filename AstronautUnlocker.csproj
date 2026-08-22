@@ -14,6 +14,8 @@
 
   <ItemGroup>
     <Compile Include="AstronautUnlockerMod.cs" />
+    <Compile Include="FlagCustomization.cs" />
+    <Compile Include="AstronautRuntimeFixes.cs" />
   </ItemGroup>
 
   <ItemGroup>

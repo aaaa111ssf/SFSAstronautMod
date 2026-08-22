@@ -35,7 +35,7 @@ namespace AstronautUnlocker
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.7.2";
+        public override string ModVersion => "3.8";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -46,7 +46,7 @@ namespace AstronautUnlocker
             ModifyDisableParts();
             CreatePersistentAstronautState();
             LoadEvaConfig();
-            
+            FlagCustomization.Initialize();
         }
 
         static void PatchVariableLists()
@@ -1704,6 +1704,22 @@ namespace AstronautUnlocker
                 NativeAstronautUI.pendingFuelOverride = null;
             }
         }
+
+        static void Postfix(Astronaut_EVA __result)
+        {
+            try
+            {
+                // Runtime diagnostics showed that the game's Body sprite is an atlas entry
+                // named "Screenshot ..._0", not one of the four reference part sprites.
+                // Do not substitute mismatched art: it distorts the astronaut's body layout.
+                // Keep the native Body/Head relationship until matching source pixels are available.
+                EVAControlRecovery.Attach(__result);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautMod] Could not initialize EVA runtime fixes: " + e.Message);
+            }
+        }
     }
 
     // EndMissionMenu 检查 HasCrew：为 true 会强制销毁流程（无法回收）。
@@ -2031,14 +2047,40 @@ namespace AstronautUnlocker
                 if (__instance.flagPrefab != null)
                     return true; // Original prefab exists, use original
 
-                
                 __result = FlagFallback.CreateFlag(location, direction);
                 return false;
             }
             catch (Exception e)
             {
-                
                 return true;
+            }
+        }
+
+        static void Postfix(Flag __result, Location location, int direction)
+        {
+            try
+            {
+                FlagCustomization.OnFlagSpawned(__result, location, direction);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautMod] Could not apply custom flag appearance: " + e.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(AstronautManager), "DestroyFlag")]
+    public class Patch_AstronautManager_DestroyFlag
+    {
+        static void Prefix(Flag flag)
+        {
+            try
+            {
+                FlagCustomization.ForgetFlag(flag);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautMod] Could not remove custom flag mapping: " + e.Message);
             }
         }
     }
@@ -2092,6 +2134,7 @@ namespace AstronautUnlocker
                         Menu.read.Open(() => "Cannot plant a flag on a gas giant — no solid surface!");
                         return false;
                     }
+                    FlagCustomization.BeginPlant(eva);
                 }
             }
             catch (Exception e)
@@ -2099,6 +2142,14 @@ namespace AstronautUnlocker
                 
             }
             return true;
+        }
+
+        static void Postfix()
+        {
+            // SpawnFlag consumes the pending style synchronously. Clearing here also prevents
+            // a failed original PlantFlag call (for example, a nearby-flag rejection) from
+            // leaking that style into a later unrelated SpawnFlag call.
+            FlagCustomization.CancelPendingPlant();
         }
     }
 
@@ -2131,7 +2182,9 @@ namespace AstronautUnlocker
             SpriteRenderer sr = holderObj.AddComponent<SpriteRenderer>();
             sr.sprite = GetFlagSprite();
             sr.color = new Color(0.9f, 0.2f, 0.2f, 1f); // Red flag
-            sr.sortingOrder = 100;
+            // Keep fallback flag art behind active EVA sprites.  The previous order of 100
+            // caused the entire sign to cover the astronaut in front of it.
+            sr.sortingOrder = -1;
             holderObj.transform.localScale = new Vector3(0.3f, 0.6f, 1f);
             holderObj.transform.localPosition = new Vector3(0f, 0.3f, 0f);
 
@@ -2349,6 +2402,7 @@ namespace AstronautUnlocker
 
         private void LateUpdate()
         {
+            EVAStatsPanelHider.LateUpdate();
             if (PartIconCreator.main != null)
             {
                 Camera iconCam = PartIconCreator.main.GetComponent<Camera>();
@@ -2531,7 +2585,7 @@ namespace AstronautUnlocker
                         string capturedName = name;
                         elements.Add(ButtonBuilder.CreateButton(carrier,
                             () => capturedName + " — " + statusText,
-                                () => AskFire(capturedName),
+                                () => OpenAstronautActions(capturedName),
                                 CloseMode.None));
                     }
                 }
@@ -2610,6 +2664,34 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 
+            }
+        }
+
+        private static void OpenAstronautActions(string name)
+        {
+            try
+            {
+                List<MenuElement> elements = new List<MenuElement>();
+                SizeSyncerBuilder.Carrier carrier;
+                elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
+                elements.Add(TextBuilder.CreateText(() => name));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Customize Flag",
+                    () => FlagCustomization.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Discharge",
+                    () => AskFire(name),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Back",
+                    () => ShowMenu(null, null),
+                    CloseMode.Current));
+                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautMod] Could not open astronaut actions: " + e.Message);
             }
         }
 
@@ -3206,11 +3288,12 @@ namespace AstronautUnlocker
                         rotate = false;
                     }
 
-                    PlayerController.main.player.Value = null;
+                    // The astronaut is already the active player when this menu is opened.
+                    // Do not set player.Value to null here: an exception during teleport used to
+                    // leave the controller with no active player and triggered the "No control" message.
                     eva.physics.PhysicsMode = false;
                     eva.physics.SetLocationAndState(targetLocation, physicsMode: false);
                     eva.physics.PhysicsMode = true;
-                    PlayerController.main.player.Value = eva;
 
                     Map.view.SetViewSmooth(new MapView.View(
                         targetLocation.planet.mapPlanet,
@@ -3227,6 +3310,7 @@ namespace AstronautUnlocker
                         eva.rb2d.angularVelocity = 0f;
                     }
 
+                    EVAControlRecovery.Attach(eva);
                     ScreenManager.main.CloseStack();
                     return false; // Skip original Rocket-only logic
                 }
@@ -3236,6 +3320,50 @@ namespace AstronautUnlocker
             {
                 
                 return true; // Fall back to original on error
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(FlightInfoDrawer), "Update")]
+    public class Patch_FlightInfoDrawer_HideForEVA
+    {
+        static bool Prefix(FlightInfoDrawer __instance)
+        {
+            try
+            {
+                bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
+                if (!evaSelected) return true;
+
+                // Prevent the native non-rocket branch from writing 0.00t / 0t / 0.00,
+                // then keep the entire rocket-information holder invisible for EVA.
+                if (__instance != null && __instance.menuHolder != null)
+                    __instance.menuHolder.SetActive(false);
+                if (__instance != null && __instance.timewarpText != null)
+                    __instance.timewarpText.Text = WorldTime.main.timewarpSpeed + "x";
+                return false;
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AstronautMod] Could not update EVA flight-info visibility: " + e.Message);
+                return true;
+            }
+        }
+    }
+
+    // Hide only FlightInfoDrawer's rocket stats holder during EVA.
+    public static class EVAStatsPanelHider
+    {
+
+        public static void LateUpdate()
+        {
+            bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
+            if (!evaSelected) return;
+
+            FlightInfoDrawer[] drawers = UnityEngine.Object.FindObjectsOfType<FlightInfoDrawer>(true);
+            foreach (FlightInfoDrawer drawer in drawers)
+            {
+                if (drawer == null || drawer.menuHolder == null) continue;
+                if (drawer.menuHolder.activeSelf) drawer.menuHolder.SetActive(false);
             }
         }
     }
