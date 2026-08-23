@@ -15,11 +15,9 @@ using UnityEngine;
 
 namespace AstronautUnlocker
 {
-    /// <summary>
     /// Stores flag appearances outside the game's WorldSave schema.  The native schema only
     /// persists a flag's location and direction, therefore each planted custom flag is indexed
     /// by its saved planet code and surface position.
-    /// </summary>
     public static class FlagCustomization
     {
         private const string ConfigFileName = "AstronautMod_flags.json";
