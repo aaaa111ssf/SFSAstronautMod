@@ -139,10 +139,7 @@ namespace AstronautUnlocker
             {
                 Directory.CreateDirectory(FlagsDirectory);
             }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not create custom flag directory: " + e.Message);
-            }
+            catch { }
         }
 
         public static void BeginPlant(Astronaut_EVA eva)
@@ -644,16 +641,12 @@ namespace AstronautUnlocker
             {
                 string path = ResolveFlagImagePath(fileName);
                 if (string.IsNullOrWhiteSpace(path))
-                {
-                    Debug.Log("[AstronautMod] Custom flag image was not found in: " + FlagsDirectory);
                     return null;
-                }
 
                 Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 if (!TryLoadImage(texture, File.ReadAllBytes(path)))
                 {
                     UnityEngine.Object.Destroy(texture);
-                    Debug.Log("[AstronautMod] Could not decode custom flag image: " + path);
                     return null;
                 }
 
@@ -667,9 +660,8 @@ namespace AstronautUnlocker
                 customSprites[fileName] = sprite;
                 return sprite;
             }
-            catch (Exception e)
+            catch
             {
-                Debug.Log("[AstronautMod] Could not load custom flag image: " + e.Message);
                 return null;
             }
         }
@@ -679,8 +671,7 @@ namespace AstronautUnlocker
             string primaryPath = Path.Combine(FlagsDirectory, fileName);
             if (File.Exists(primaryPath)) return primaryPath;
 
-            // Keep reading existing files created by older builds, but create new folders only
-            // in the game Mod/AstronautMod/Flags location requested by the user.
+            // Support legacy flag files.
             string legacyPath = Path.Combine(LegacyFlagsDirectory, fileName);
             return File.Exists(legacyPath) ? legacyPath : null;
         }
@@ -698,9 +689,8 @@ namespace AstronautUnlocker
                 object loaded = loadImage.Invoke(null, new object[] { texture, imageBytes, false });
                 return loaded is bool && (bool)loaded;
             }
-            catch (Exception e)
+            catch
             {
-                Debug.Log("[AstronautMod] Image decoder is unavailable: " + e.Message);
                 return false;
             }
         }
@@ -748,10 +738,7 @@ namespace AstronautUnlocker
                     }
                 }
             }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not load custom flag settings: " + e.Message);
-            }
+            catch { }
         }
 
         private static void Save()
@@ -779,18 +766,11 @@ namespace AstronautUnlocker
                 };
                 File.WriteAllText(ConfigPath, JsonUtility.ToJson(data, true));
             }
-            catch (Exception e)
-            {
-                Debug.Log("[AstronautMod] Could not save custom flag settings: " + e.Message);
-            }
+            catch { }
         }
     }
 
-    /// <summary>
-    /// Cancels the native Holder's left/right flip for the inserted flag artwork only.
-    /// The pole and original frame keep their native direction while the artwork stays
-    /// in its original national-flag orientation.
-    /// </summary>
+    // Keep custom flag artwork from mirroring.
     public sealed class FlagArtworkOrientation : MonoBehaviour
     {
         private float baseScaleX = 1f;
