@@ -65,16 +65,14 @@
 ---
 
 ## 更新日志 / Changelog
-
-### 【v3.9 更新 / v3.9 Update】
-- 修复：外出执行 EVA 的宇航员不会再在任用菜单中被错误显示为可用人员。任用名单会同时检查持久 EVA 状态、世界中的 EVA 实体、飞行乘员与座位占用，避免同一宇航员被重复任用。
-  **Fix: Astronauts on EVA are no longer incorrectly shown as available in the assignment menu. The roster checks persistent EVA state, live EVA entities, in-flight crew, and occupied seats to prevent duplicate assignment.**
-- 修复：从建造进入世界、再返回建造时，EVA 任务状态会正确恢复，避免宇航员消失、座位身份冲突或状态错位。
-  **Fix: EVA mission state is restored correctly when moving from Build to World and back, preventing disappearing astronauts, conflicting seat identities, and roster desynchronization.**
-- 调整：长宇航员名单改为每页 8 人，并提供 Previous/Next Page 翻页按钮。原生隐藏的 Astronaut Seat 保持真实单座位行为；不会伪造不受存档与 EVA 系统支持的额外座位。
-  **Changed: Long astronaut rosters now show 8 entries per page with Previous/Next Page controls. The hidden native Astronaut Seat remains a real single-seat part; unsupported extra seats are not simulated.**
-- 清理：移除临时诊断日志和未发布的降落伞试验代码。
-  **Cleanup: Removed temporary diagnostic logging and unreleased parachute experiment code.**
+  
+### 【v3.9 更新 / v3.9 Update】  
+- 修复：外出执行 EVA 的宇航员不会再在任用菜单中被错误显示为可用人员 任用名单会同时检查持久 EVA 状态、世界中的 EVA 实体、飞行乘员与座位占用，避免同一宇航员被重复任用  
+  **Fix: Astronauts on EVA are no longer incorrectly shown as available in the assignment menu. The roster checks persistent EVA state, live EVA entities, in-flight crew, and occupied seats to prevent duplicate assignment.**  
+- 修复：从建造进入世界、再返回建造时，EVA 任务状态会正确恢复，避免宇航员消失、座位身份冲突或状态错位  
+  **Fix: EVA mission state is restored correctly when moving from Build to World and back, preventing disappearing astronauts, conflicting seat identities, and roster desynchronization.**  
+- 调整：长宇航员名单改为每页 8 人 并提供 Previous/Next Page 翻页按钮 原生隐藏的 Astronaut Seat 保持真实单座位行为；不会伪造不受存档与 EVA 系统支持的额外座位  
+  **Changed: Long astronaut rosters now show 8 entries per page with Previous/Next Page controls.**
 
 ### 【v3.8 更新 / v3.8 Update】
 - 新增：**按宇航员配置旗帜外观**，支持六种颜色预设以及持久化 PNG/JPG 自定义图片；默认设置下仍使用原版旗帜。
