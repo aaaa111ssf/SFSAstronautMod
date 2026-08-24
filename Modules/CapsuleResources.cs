@@ -27,14 +27,16 @@ namespace WorldBuild.Mod.Modules
         {
             varMod = GetComponent<VariablesModule>();
 
-            if (!varMod.boolVariables.GetValue("oxygenInitialized"))
+            if (!varMod.boolVariables.GetValue("oxygenInitialized") || !varMod.boolVariables.GetValue("oxygenV2Initialized"))
             {
-                Oxygen = WorldBuildManager.PlacedFrames <= 2 ? 0 : MaxOxygen;
+                // 氧气用于 EVA 生存；旧存档的零氧舱体会补满。
+                Oxygen = MaxOxygen;
                 varMod.boolVariables.SetValue("oxygenInitialized", true);
+                varMod.boolVariables.SetValue("oxygenV2Initialized", true);
             }
             if (!varMod.boolVariables.GetValue("evaresInitialized"))
             {
-                EVARes = WorldBuildManager.PlacedFrames <= 2 ? 0 : MaxEVARes;
+                EVARes = MaxEVARes;
                 varMod.boolVariables.SetValue("evaresInitialized", true);
             }
         }

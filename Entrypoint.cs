@@ -15,11 +15,11 @@ namespace WorldBuild.Mod
 {
     public class Entrypoint : ModLoader.Mod
     {
-        public override string ModNameID => "worldbuild_astronaut_merged";
-        public override string DisplayName => "WorldBuild + AstronautMod";
-        public override string Author => "Fusion Space Industries & A Future star";
+        public override string ModNameID => "worldbuildastronaut";
+        public override string DisplayName => "WorldBuildAstronaut";
+        public override string Author => "A Future star";
         public override string Description => "Build rockets during missions + native astronaut/crew system with EVA, flags, and rock collection.";
-        public override string ModVersion => "1.0.0-merged";
+        public override string ModVersion => "betav0.1";
         public override string MinimumGameVersionNecessary => "1.6";
 
         public static GameObject BaseGO;
@@ -31,7 +31,7 @@ namespace WorldBuild.Mod
             main = this;
         }
 
-        public override Dictionary<string, string> Dependencies => new Dictionary<string, string> { { "UITools", "1.1.5" } };
+        public override Dictionary<string, string> Dependencies => new Dictionary<string, string>();
 
         public override void Early_Load()
         {

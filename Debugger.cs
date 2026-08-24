@@ -10,8 +10,7 @@ namespace WorldBuild.Mod
 
         private static object FormatMessage(object msg)
         {
-            var frame = new StackTrace().GetFrame(2);
-            return msg + "\n Calling Method: " + frame.GetMethod().ReflectedType?.FullName + ":" + frame.GetMethod().Name;
+            return msg;
         }
         
         public static void Log(object message, bool overrideDE = false)

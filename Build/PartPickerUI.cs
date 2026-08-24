@@ -3,7 +3,6 @@ using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UITools;
 using SFS;
 using SFS.Parts;
 using SFS.Builds;
@@ -30,32 +29,19 @@ namespace WorldBuild.Mod.Build
         public static readonly int id_main = Builder.GetRandomID();
         public static readonly int id_categories = Builder.GetRandomID();
         public static readonly int id_parts = Builder.GetRandomID();
+        public static readonly int id_buildControls = Builder.GetRandomID();
         public static readonly int id_tooltip = Builder.GetRandomID();
         public static GameObject partWindowHolder;
         public static Window window_categories;
         public static Window window_parts;
+        public static Window window_buildControls;
         public static Window window_tooltip;
         public static ModButton button_selectedCategory = null;
 
         public static CategoryParts[] pickCategories = null;
         public static CategoryParts selectedCategory = null;
-        /// <summary>
-        /// Pseudo-mirror of <c>WorldBuildManager.main.pickGrid.categoryOrder</c>
-        /// </summary>
+        // 零件分类顺序。
         public static List<PickCategory> categoryOrder = new List<PickCategory>();
-        // {
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Basic_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Six_Wide_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Eight_Wide_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Ten_Wide_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Twelve_Wide_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Engine_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Aerodynamics_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Fairings_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Structural_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Loc.main.Other_Parts) },
-        //     new PickCategory() { displayName = new TranslationVariable(Field.Text("Redstone Atlas")) },
-        // };
         public static Transform createdPartsHolder;
         public static Dictionary<VariantRef, Part> createdParts = new Dictionary<VariantRef, Part>();
         public static void CreateUI()
@@ -81,22 +67,20 @@ namespace WorldBuild.Mod.Build
 
         static void CreateCategoriesUI()
         {
-            void CreateCategory(CategoryParts category)
+            void CreateCategory(CategoryParts category, Transform holder)
             {
                 ModButton button = null;
                 button = Builder.CreateButton
                 (
-                    window_categories,
+                    holder,
                     size_categories.x - 15,
                     45,
                     onClick: () =>
                     {
                         if (selectedCategory != category)
                         {
-                            button_selectedCategory.SetSelected(false);
                             selectedCategory = category;
                             button_selectedCategory = button;
-                            button_selectedCategory.SetSelected(true);
                             CreatePartsUI();
                         }
                     },
@@ -105,7 +89,6 @@ namespace WorldBuild.Mod.Build
                 if (selectedCategory == category)
                 {
                     button_selectedCategory = button;
-                    button_selectedCategory.SetSelected(true);
                 }
             }
 
@@ -116,7 +99,7 @@ namespace WorldBuild.Mod.Build
             
             var pos = WindowPositionHelper.GenerateWindowCoords(32 + size_parts.x, -80, size_categories.x, size_categories.y, Anchor.TopLeft, Origin.TopLeft);
 
-            window_categories = UIToolsBuilder.CreateClosableWindow
+            window_categories = Builder.CreateWindow
             (
                 GUIHolder,
                 id_categories,
@@ -124,10 +107,10 @@ namespace WorldBuild.Mod.Build
                 size_categories.y,
                 pos.x,
                 pos.y,
-                savePosition: true,
-                draggable: false,
-                opacity: 0.95f,
-                titleText: "Categories"
+                false,
+                true,
+                0.95f,
+                "Categories"
             );
             window_categories.CreateLayoutGroup(Type.Vertical, TextAnchor.UpperCenter, 10f, new RectOffset(5, 5, 5, 5));
             window_categories.EnableScrolling(Type.Vertical);
@@ -147,28 +130,51 @@ namespace WorldBuild.Mod.Build
                 "Redstone Atlas"
             };
 
-            if (pickCategories.Any(cat => !vanillaCats.Contains(cat.tag.displayName.Field))) 
+            if (pickCategories.Any(cat => vanillaCats.Contains(cat.tag.displayName.Field)))
             {
                 Builder.CreateLabel(window_categories, size_categories.x - 15, 45, text: "Vanilla");
             }
 
             foreach (var category in pickCategories
                 .Where(cat => vanillaCats.Contains(cat.tag.displayName.Field)).ToList()
-                .KeySort(cat => Array.IndexOf(vanillaCats, cat.tag.displayName.Field), false)
-                )
+                .KeySort(cat => Array.IndexOf(vanillaCats, cat.tag.displayName.Field), false))
             {
-                CreateCategory(category);
+                CreateCategory(category, window_categories);
             }
 
-            if (pickCategories.Any(cat => !vanillaCats.Contains(cat.tag.displayName.Field)))
+            var moddedCategories = pickCategories
+                .Where(cat => !vanillaCats.Contains(cat.tag.displayName.Field))
+                .ToList();
+            if (moddedCategories.Count > 0)
             {
                 Builder.CreateLabel(window_categories, size_categories.x - 15, 45, text: "Modded");
+                foreach (var category in moddedCategories)
+                    CreateCategory(category, window_categories);
             }
 
-            foreach (var cat in pickCategories.Where(cat => !vanillaCats.Contains(cat.tag.displayName.Field)))
-            {
-                CreateCategory(cat);
-            }
+            if (window_buildControls != null)
+                Object.Destroy(window_buildControls.gameObject);
+
+            var controlsPos = WindowPositionHelper.GenerateWindowCoords(
+                32 + size_parts.x, -760, size_categories.x, 240, Anchor.TopLeft, Origin.TopLeft);
+            window_buildControls = Builder.CreateWindow(
+                GUIHolder, id_buildControls, size_categories.x, 240,
+                controlsPos.x, controlsPos.y, false, true, 0.95f, "Build controls");
+            window_buildControls.CreateLayoutGroup(Type.Vertical, TextAnchor.UpperCenter, 10f, new RectOffset(5, 5, 5, 5));
+            Builder.CreateButton(window_buildControls, size_categories.x - 15, 45,
+                onClick: () =>
+                {
+                    WorldBuildManager.main?.ToggleFairingTransparency();
+                    CreateCategoriesUI();
+                },
+                text: $"Fairing view: {(WorldBuildManager.main?.FairingTransparencyEnabled == true ? "ON" : "OFF")}");
+            Builder.CreateButton(window_buildControls, size_categories.x - 15, 60,
+                onClick: () => WorldBuildManager.main?.RefillOxygen(),
+                text: "Refill oxygen from nearest rocket");
+            Builder.CreateButton(window_buildControls, size_categories.x - 15, 45,
+                onClick: () => WorldBuildManager.main?.ExitBuild(),
+                text: "Exit build mode");
+
         }
 
         static void CreatePartsUI()
@@ -214,11 +220,21 @@ namespace WorldBuild.Mod.Build
                         if (data.inputType == InputType.MouseLeft)
                             WorldBuildManager.main.CreateNewPart(variant, data.position.World(0f));
                     });
-                    button.onClick += () => Debugger.Log("TODO: Part info box.");
-                    button.onRightClick += () => Debugger.Log("TODO: Part info box.");
                 }
             }
             DestroyCreatedParts();
+        }
+
+        public static bool IsPointOverPartsWindow(Vector2 screenPosition)
+        {
+            if (window_parts == null) return false;
+            var rect = window_parts.gameObject.transform as RectTransform;
+            return rect != null && RectTransformUtility.RectangleContainsScreenPoint(rect, screenPosition, null);
+        }
+
+        public static bool IsPointerOverPartsWindow()
+        {
+            return IsPointOverPartsWindow(UnityEngine.Input.mousePosition);
         }
 
         public static void DestroyUI()
@@ -234,7 +250,7 @@ namespace WorldBuild.Mod.Build
                 Object.Destroy(createdPartsHolder.gameObject);
         }
 
-        // ? Derived from `SFS.Builds.PickGridUI.Initialize`.
+        // 读取游戏原生零件分类。
         private static CategoryParts[] GetPickCategories()
         {
             var dictionary = new Dictionary<PickCategory, CategoryParts>();

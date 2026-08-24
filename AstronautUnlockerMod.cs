@@ -35,7 +35,8 @@ namespace AstronautUnlocker
             PatchVariableLists();
             ModifyDisableParts();
             CreatePersistentAstronautState();
-            Debug.Log("[AstronautMod] v3.38 loaded (merged with WorldBuild)");
+            FlagCustomization.Initialize();
+            Debug.Log("[AstronautMod] main v3.8/v3.9 features synchronized into dev-beta");
         }
 
         static void PatchVariableLists()
@@ -1217,6 +1218,67 @@ namespace AstronautUnlocker
         }
     }
 
+    // WorldBuild-instantiated parts can retain their runtime action listeners while reporting
+    // zero serialized UnityEvent listeners. Native staging checks only the serialized count,
+    // so explicitly allow genuine separator/split modules through that UI gate.
+    [HarmonyPatch(typeof(StagingDrawer), "CanStagePart")]
+    public class Patch_StagingDrawer_CanStageWorldBuildSeparator
+    {
+        static bool Prefix(Part part, bool playDenySound, ref bool __result)
+        {
+            if (WorldBuildStagingCompatibility.IsSeparatorOrSplit(part))
+            {
+                __result = true;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    // Some staging UI actions call AddPartSelected/TogglePartSelected directly rather than
+    // CanStagePart. Match the blueprint editor: every usable separator/split module may be
+    // added to a stage even if it is currently independent from other parts.
+    public static class WorldBuildStagingCompatibility
+    {
+        public static bool IsSeparatorOrSplit(Part part)
+        {
+            return part != null && !part.HasModule<CannotStageModule>() &&
+                (part.HasModule<DetachModule>() || part.HasModule<SplitModule>());
+        }
+
+        public static StageUI GetSelectedStage(StagingDrawer drawer)
+        {
+            return drawer == null ? null : Traverse.Create(drawer).Field("selected").GetValue<StageUI>();
+        }
+    }
+
+    [HarmonyPatch(typeof(StagingDrawer), "AddPartSelected")]
+    public class Patch_StagingDrawer_AddWorldBuildSeparator
+    {
+        static bool Prefix(StagingDrawer __instance, Part part, bool playDenySound, bool createNewStep)
+        {
+            if (!WorldBuildStagingCompatibility.IsSeparatorOrSplit(part)) return true;
+            StageUI selected = WorldBuildStagingCompatibility.GetSelectedStage(__instance);
+            if (selected == null) return true;
+            if (!selected.stage.parts.Contains(part))
+                selected.stage.AddPart(part, record: true, createNewStep);
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(StagingDrawer), "TogglePartSelected")]
+    public class Patch_StagingDrawer_ToggleWorldBuildSeparator
+    {
+        static bool Prefix(StagingDrawer __instance, Part part, bool playSound, bool createNewStep)
+        {
+            if (!WorldBuildStagingCompatibility.IsSeparatorOrSplit(part)) return true;
+            StageUI selected = WorldBuildStagingCompatibility.GetSelectedStage(__instance);
+            if (selected == null) return true;
+            selected.stage.ToggleSelected(part, createNewStep);
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(CrewModule), "OpenPartMenu")]
     public class Patch_CrewModule_OpenPartMenu
     {
@@ -1420,6 +1482,22 @@ namespace AstronautUnlocker
                 return true;
             }
         }
+
+        static void Postfix(Flag __result, Location location, int direction)
+        {
+            try { FlagCustomization.OnFlagSpawned(__result, location, direction); }
+            catch { }
+        }
+    }
+
+    [HarmonyPatch(typeof(AstronautManager), "DestroyFlag")]
+    public class Patch_AstronautManager_DestroyFlag
+    {
+        static void Prefix(Flag flag)
+        {
+            try { FlagCustomization.ForgetFlag(flag); }
+            catch { }
+        }
     }
 
     [HarmonyPatch(typeof(Flag), "Start")]
@@ -1472,6 +1550,7 @@ namespace AstronautUnlocker
                         Menu.read.Open(() => "Cannot plant a flag on a gas giant — no solid surface!");
                         return false;
                     }
+                    FlagCustomization.BeginPlant(eva);
                 }
             }
             catch (Exception e)
@@ -1479,6 +1558,12 @@ namespace AstronautUnlocker
                 Debug.Log("[AU] PlantFlag prefix error: " + e);
             }
             return true;
+        }
+
+        static void Postfix()
+        {
+            // SpawnFlag consumes the pending style synchronously; clear any style left after a failed plant.
+            FlagCustomization.CancelPendingPlant();
         }
     }
 
@@ -1850,10 +1935,10 @@ namespace AstronautUnlocker
 
         public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat)
         {
-            ShowMenu(seat, redrawSeat, CloseMode.Current);
+            ShowMenu(seat, redrawSeat, CloseMode.Current, 0);
         }
 
-        public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat, CloseMode closeMode)
+        public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat, CloseMode closeMode, int page = 0)
         {
             pendingSeat = seat;
             pendingRedraw = redrawSeat;
@@ -1887,32 +1972,43 @@ namespace AstronautUnlocker
                 sorted.Sort((a, b) =>
                     ((int)SafeGetAstronautState(a.astronautName))
                     .CompareTo((int)SafeGetAstronautState(b.astronautName)));
+                var visible = sorted.Where(astro => !assignMode ||
+                    (astro.alive && SafeGetAstronautState(astro.astronautName) == AstronautState.State.Available)).ToList();
+                const int perPage = 8;
+                int totalPages = Mathf.Max(1, Mathf.CeilToInt(visible.Count / (float)perPage));
+                page = Mathf.Clamp(page, 0, totalPages - 1);
+                availableCount = visible.Count;
 
-                foreach (var astro in sorted)
+                foreach (var astro in visible.Skip(page * perPage).Take(perPage))
                 {
                     string name = astro.astronautName;
                     AstronautState.State st = SafeGetAstronautState(name);
                     string statusText = AstronautState.main.GetAstronautStateText(st, assignMode);
+                    string capturedName = name;
+                    Action selectAction = assignMode
+                        ? (Action)(() => AssignToSeat(capturedName))
+                        : () => OpenAstronautActions(capturedName);
+                    elements.Add(ButtonBuilder.CreateButton(carrier,
+                        () => capturedName + " — " + statusText,
+                        selectAction,
+                        assignMode ? CloseMode.Current : CloseMode.None));
+                }
 
-                    if (assignMode)
+                if (totalPages > 1)
+                {
+                    if (page > 0)
                     {
-                        if (st == AstronautState.State.Available && astro.alive)
-                        {
-                            availableCount++;
-                            string capturedName = name;
-                            elements.Add(ButtonBuilder.CreateButton(carrier,
-                                () => capturedName + " — " + statusText,
-                                () => AssignToSeat(capturedName),
-                                CloseMode.Current));
-                        }
-                    }
-                    else
-                    {
-                        string capturedName = name;
+                        int previousPage = page - 1;
                         elements.Add(ButtonBuilder.CreateButton(carrier,
-                            () => capturedName + " — " + statusText,
-                                () => AskFire(capturedName),
-                                CloseMode.None));
+                            () => "← Previous Page (" + (page + 1) + "/" + totalPages + ")",
+                            () => ShowMenu(seat, redrawSeat, CloseMode.Current, previousPage), CloseMode.Current));
+                    }
+                    if (page < totalPages - 1)
+                    {
+                        int nextPage = page + 1;
+                        elements.Add(ButtonBuilder.CreateButton(carrier,
+                            () => "Next Page (" + (page + 1) + "/" + totalPages + ") →",
+                            () => ShowMenu(seat, redrawSeat, CloseMode.Current, nextPage), CloseMode.Current));
                     }
                 }
             }
@@ -1990,6 +2086,34 @@ namespace AstronautUnlocker
             catch (Exception e)
             {
                 Debug.Log("[AU] Create dialog error: " + e);
+            }
+        }
+
+        private static void OpenAstronautActions(string name)
+        {
+            try
+            {
+                List<MenuElement> elements = new List<MenuElement>();
+                SizeSyncerBuilder.Carrier carrier;
+                elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
+                elements.Add(TextBuilder.CreateText(() => name));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Customize Flag",
+                    () => FlagCustomization.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Discharge",
+                    () => AskFire(name),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Back",
+                    () => ShowMenu(null, null),
+                    CloseMode.Current));
+                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[AU] Astronaut actions error: " + e);
             }
         }
 
@@ -2466,43 +2590,6 @@ namespace AstronautUnlocker
         }
     }
 
-    [HarmonyPatch(typeof(DetachModule), "Detach")]
-    public class Patch_DetachModule_Detach
-    {
-        static bool Prefix(DetachModule __instance, UsePartData data)
-        {
-            try
-            {
-                if (__instance.separationSurface == null)
-                {
-                    Debug.Log("[AU] DetachModule.Detach skipped: separationSurface is null on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
-                    return false;
-                }
-                if (__instance.separationSurface.surfaces == null || __instance.separationSurface.surfaces.Count == 0)
-                {
-                    Debug.Log("[AU] DetachModule.Detach skipped: separationSurface.surfaces is null/empty on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
-                    return false;
-                }
-                var rocketProp = typeof(DetachModule).GetProperty("Rocket",
-                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-                object rocket = rocketProp?.GetValue(__instance);
-                if (rocket == null)
-                {
-                    Debug.Log("[AU] DetachModule.Detach skipped: Rocket is null on " +
-                        __instance.transform.GetComponentInParentTree<Part>()?.name);
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.Log("[AU] DetachModule.Detach prefix error: " + e);
-            }
-            return true;
-        }
-    }
-
     public static class VariableListPatches
     {
         public static bool RegisterOnVariableChange_Prefix(object __instance, string variableName)
@@ -2701,7 +2788,7 @@ namespace AstronautUnlocker
                     dashboardHolder = ModGUIBuilder.CreateHolder(
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_Dashboard");
                     dashboardLabel = ModGUIBuilder.CreateLabel(
-                        dashboardHolder.transform, 280, 80,
+                        dashboardHolder.transform, 300, 132,
                         -450, 300,
                         "");
                     dashboardLabel.Color = new Color(1f, 1f, 1f, 0.9f);
@@ -2746,6 +2833,10 @@ namespace AstronautUnlocker
                 }
 
                 double fuel = eva.resources?.fuelPercent?.Value ?? 0.0;
+                var worldBuildAstronaut = eva.GetComponent<WorldBuild.Mod.Modules.Astronaut>();
+                double oxygen = worldBuildAstronaut?.GetOxygenSecondsLeft() ?? 0.0;
+                int oxygenMinutes = (int)(oxygen / 60.0);
+                int oxygenSeconds = (int)(oxygen % 60.0);
 
                 string altStr = altitude >= 1000.0
                     ? (altitude / 1000.0).ToString("F2") + " km"
@@ -2753,7 +2844,8 @@ namespace AstronautUnlocker
 
                 label.Text = $"Speed: {speed:F1} m/s\n" +
                              $"Altitude: {altStr}\n" +
-                             $"Fuel: {fuel * 100:F0}%";
+                             $"Fuel: {fuel * 100:F0}%\n" +
+                             $"Oxygen: {oxygenMinutes}:{oxygenSeconds:D2}";
             }
             catch (Exception e)
             {
