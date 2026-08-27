@@ -16,6 +16,12 @@
     <Compile Include="AstronautUnlockerMod.cs" />
     <Compile Include="FlagCustomization.cs" />
     <Compile Include="AstronautRuntimeFixes.cs" />
+    <Compile Include="ModLogger.cs" />
+    <Compile Include="Patches\AstronautCorePatches.cs" />
+    <Compile Include="Patches\FlagAndUiPatches.cs" />
+    <Compile Include="Patches\RuntimeAndUiHelpers.cs" />
+    <Compile Include="Patches\GameplayAndEvaPatches.cs" />
+    <Compile Include="Patches\LogNoiseFilter.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -70,6 +76,10 @@
     </Reference>
     <Reference Include="UnityEngine.AssetBundleModule">
       <HintPath>$(DllDir)/UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.SpriteMaskModule">
+      <HintPath>$(DllDir)/UnityEngine.SpriteMaskModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Unity.TextMeshPro">

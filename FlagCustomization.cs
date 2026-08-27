@@ -15,9 +15,7 @@ using UnityEngine;
 
 namespace AstronautUnlocker
 {
-    /// Stores flag appearances outside the game's WorldSave schema.  The native schema only
-    /// persists a flag's location and direction, therefore each planted custom flag is indexed
-    /// by its saved planet code and surface position.
+    // 保存自定义旗帜外观
     public static class FlagCustomization
     {
         private const string ConfigFileName = "AstronautMod_flags.json";
@@ -420,7 +418,7 @@ namespace AstronautUnlocker
             if (!originalSprites.ContainsKey(id)) originalSprites[id] = renderer.sprite;
             if (!originalColors.ContainsKey(id)) originalColors[id] = renderer.color;
 
-            // Keep native flags unchanged; custom flags use a separate face and pole.
+
             renderer.sprite = originalSprites[id];
             renderer.color = originalColors[id];
             Sprite customFace = null;
@@ -438,7 +436,7 @@ namespace AstronautUnlocker
                 return;
             }
 
-            // If an image file cannot be decoded, do not leave an invisible flag behind.
+
             RemoveArtworkRenderer(id);
             renderer.enabled = true;
             renderer.color = ParseColor(style.colorHex, originalColors[id]);
@@ -480,7 +478,7 @@ namespace AstronautUnlocker
             float imageWidth = Mathf.Max(0.0001f, image.bounds.size.x);
             float imageHeight = Mathf.Max(0.0001f, image.bounds.size.y);
 
-            // The upper Icon Flag area is the cloth face.
+
             float availableWidth = frameWidth * 0.98f;
             float availableHeight = frameHeight * 0.34f;
             bool preserveOutline = HasTransparentOutline(image) ||
@@ -488,7 +486,7 @@ namespace AstronautUnlocker
             float uniformScale = preserveOutline
                 ? Mathf.Min(availableWidth / imageWidth, availableHeight / imageHeight)
                 : Mathf.Max(availableWidth / imageWidth, availableHeight / imageHeight);
-            // Preserve the original image orientation during flag animation.
+
             FlagArtworkOrientation orientation = artwork.GetComponent<FlagArtworkOrientation>();
             if (orientation == null) orientation = artwork.gameObject.AddComponent<FlagArtworkOrientation>();
             orientation.SetBaseScale(uniformScale, uniformScale);
@@ -554,9 +552,9 @@ namespace AstronautUnlocker
                 poleRenderers[rendererId] = pole;
             }
 
-            // Keep the black pole on the native left edge; the custom face remains unframed.
+
             float poleWidth = Mathf.Max(0.015f, frameBounds.size.x * 0.07f);
-            // Span the full flag height so the pole connects to the face.
+
             float poleTop = frameBounds.max.y;
             float poleBottom = frameBounds.min.y;
             float poleHeight = Mathf.Max(0.01f, poleTop - poleBottom);
@@ -602,7 +600,7 @@ namespace AstronautUnlocker
             }
             catch
             {
-                // Failing safe preserves a normal rectangular image rather than distorting it.
+
                 return false;
             }
         }
@@ -669,7 +667,7 @@ namespace AstronautUnlocker
             string primaryPath = Path.Combine(FlagsDirectory, fileName);
             if (File.Exists(primaryPath)) return primaryPath;
 
-            // Support legacy flag files.
+
             string legacyPath = Path.Combine(LegacyFlagsDirectory, fileName);
             return File.Exists(legacyPath) ? legacyPath : null;
         }
@@ -768,7 +766,7 @@ namespace AstronautUnlocker
         }
     }
 
-    // Keep custom flag artwork from mirroring.
+
     public sealed class FlagArtworkOrientation : MonoBehaviour
     {
         private float baseScaleX = 1f;

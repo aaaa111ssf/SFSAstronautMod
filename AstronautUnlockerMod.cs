@@ -47,13 +47,14 @@ namespace AstronautUnlocker
             CreatePersistentAstronautState();
             LoadModConfig();
             LoadEvaConfig();
-            // 座位恢复缓存只服务当前任务；清除旧测试会话的残留，避免跨会话错配人员。
+            // 座位恢复缓存只服务当前任务 清除旧测试会话的残留 避免跨会话错配人员
             if (savedAstronauts.Count > 0)
             {
                 savedAstronauts.Clear();
                 SaveEvaConfig();
             }
             FlagCustomization.Initialize();
+            ModLogger.Info("Initialized");
         }
 
         static void PatchVariableLists()
@@ -68,7 +69,7 @@ namespace AstronautUnlocker
                 }
                 if (variableListGeneric == null)
                 {
-                    
+                    ModLogger.Warning("Variable list API was not found");
                     return;
                 }
 
@@ -87,7 +88,7 @@ namespace AstronautUnlocker
                     }
                     catch (Exception e)
                     {
-                        
+                        ModLogger.ErrorOnce("Variable list patch", e);
                     }
                 }
 
@@ -105,7 +106,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("Variable list initialization", e);
             }
         }
 
@@ -133,7 +134,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("Hub scene initialization", e);
             }
         }
 
@@ -176,7 +177,7 @@ namespace AstronautUnlocker
 
                 if (AstronautState.main.crew_Build == null)
                     AstronautState.main.crew_Build = new List<string>();
-                // 不清空 crew_Build，进入世界时再转换为 crew_World
+                // 不清空 crew_Build 进入世界时再转换为 crew_World
                 LoadAstronautDataFromCache();
                 EnsureAllStateLists();
                 UpdateDriver.ScheduleCrewModuleRefresh();
@@ -185,7 +186,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 187", e);
             }
         }
 
@@ -247,7 +248,7 @@ namespace AstronautUnlocker
     }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 249", e);
             }
         }
 
@@ -272,7 +273,7 @@ namespace AstronautUnlocker
                         if (!seat.HasAstronaut) continue;
                         string name = seat.astronaut.Value;
 
-                        // 乘员仍为 Available 说明 AddCrew 未执行，补上
+                        // 乘员仍为 Available 说明 AddCrew 未执行 补上
                         var state = AstronautState.main.GetAstronautState(name);
                         if (state == AstronautState.State.Available)
                         {
@@ -296,7 +297,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 298", e);
             }
         }
 
@@ -314,7 +315,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 316", e);
             }
         }
 
@@ -351,7 +352,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 353", e);
             }
         }
 
@@ -373,7 +374,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 375", e);
             }
         }
 
@@ -466,7 +467,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("Astronaut cache load", e);
             }
         }
 
@@ -494,7 +495,7 @@ namespace AstronautUnlocker
     }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("Astronaut cache save", e);
             }
         }
 
@@ -666,13 +667,16 @@ namespace AstronautUnlocker
                         () => NativeAstronautUI.ShowMenu(null, null),
                         "Astronauts");
                 }
-                catch { }
+                catch (Exception fallbackError)
+                {
+                    ModLogger.ErrorOnce("Hub button fallback", fallbackError);
+                }
             }
         }
 
         // ===== 模组部件 EVA 注入 =====
 
-        // EVA 配置：部件名 -> 是否启用 EVA
+        // EVA 配置 部件名 -> 是否启用 EVA
         public static Dictionary<string, bool> evaConfig = new Dictionary<string, bool>();
         public static Dictionary<string, int> evaCrewCapacities = new Dictionary<string, int>();
         private const int DefaultCrewCapacity = 1;
@@ -689,7 +693,10 @@ namespace AstronautUnlocker
                     if (modDirectory != null)
                         return Path.Combine(modDirectory.FullName, "config.txt");
                 }
-                catch { }
+                catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 693", e);
+            }
                 return Path.Combine(Application.persistentDataPath, "AstronautMod", "config.txt");
             }
         }
@@ -741,13 +748,16 @@ namespace AstronautUnlocker
                 if (cleanedLines.Length != configLines.Length)
                     File.WriteAllLines(path, cleanedLines);
             }
-            catch { }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Mod configuration", e);
+            }
         }
 
         // 记录已由本模组注入 CrewModule 的部件 ID
         public static HashSet<int> injectedPartIds = new HashSet<int>();
 
-        // 关闭 EVA 时暂存乘员，开启时恢复
+        // 关闭 EVA 时暂存乘员 开启时恢复
         public static Dictionary<string, List<string>> savedAstronauts = new Dictionary<string, List<string>>();
 
         [Serializable]
@@ -792,7 +802,10 @@ namespace AstronautUnlocker
                     }
                 }
             }
-            catch (Exception e) {  }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("EVA configuration load", e);
+            }
         }
 
         public static void SaveEvaConfig()
@@ -825,10 +838,13 @@ namespace AstronautUnlocker
                 string json = JsonUtility.ToJson(data, true);
                 File.WriteAllText(path, json);
             }
-            catch (Exception e) {  }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("EVA configuration save", e);
+            }
         }
 
-        // 离开世界时清空暂存乘员，避免新建火箭自动恢复旧乘员
+        // 离开世界时清空暂存乘员 避免新建火箭自动恢复旧乘员
         public static void ClearSavedAstronauts(string reason)
         {
             try
@@ -840,7 +856,10 @@ namespace AstronautUnlocker
                     SaveEvaConfig();
                 }
             }
-            catch (Exception e) {  }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Saved crew cleanup", e);
+            }
         }
 
         public static int GetCrewCapacity(string partName)
@@ -916,7 +935,10 @@ namespace AstronautUnlocker
                     CloseMode.Current));
                 MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
             }
-            catch { }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 932", e);
+            }
         }
 
         public static bool ApplyCrewCapacity(Part part)
@@ -1042,7 +1064,10 @@ namespace AstronautUnlocker
                         seat.astronautModel.SetActive(seat.HasAstronaut);
                 }
             }
-            catch { }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1058", e);
+            }
         }
 
         private static int ClampCrewCapacity(int capacity)
@@ -1072,7 +1097,7 @@ namespace AstronautUnlocker
                 CrewModule crew = part.gameObject.AddComponent<CrewModule>();
 
                 var tr = Traverse.Create(crew);
-                // 用当前质量作为 baseMass，避免 OnSeatChange 覆盖
+                // 用当前质量作为 baseMass 避免 OnSeatChange 覆盖
                 float existingMass = part.mass != null ? part.mass.Value : 0f;
                 tr.Field("baseMass").SetValue(existingMass);
                 tr.Field("part").SetValue(part);
@@ -1103,13 +1128,13 @@ namespace AstronautUnlocker
                 tr.Field("interior").SetValue(null);
                 tr.Field("hatch").SetValue(null);
 
-                // 先标记已注入，供 OnSeatChange 判断
+                // 先标记已注入 供 OnSeatChange 判断
                 injectedPartIds.Add(partId);
 
                 // 清模块缓存
                 ClearModuleCache(part);
 
-                // 初始化：注册回调并调用 Seat.OnStart
+                // 初始化 注册回调并调用 Seat.OnStart
                 try
                 {
                     ((I_InitializePartModule)crew).Initialize();
@@ -1126,7 +1151,7 @@ namespace AstronautUnlocker
                 string partName = part.name;
                 if (savedAstronauts.ContainsKey(partName) && savedAstronauts[partName].Count > 0)
                 {
-                    var names = new List<string>(savedAstronauts[partName]); // Copy
+                    var names = new List<string>(savedAstronauts[partName]);
                     bool isRevert = Patch_GameManager_LoadSave.isRevertLoad;
                     var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
 
@@ -1134,7 +1159,7 @@ namespace AstronautUnlocker
                     foreach (string name in names)
                     {
                         if (seatIndex >= seats.Length) break;
-                        // 本次加载计划恢复为 EVA 的人员不能同时恢复进座位。
+                        // 本次加载计划恢复为 EVA 的人员不能同时恢复进座位
                         if (Patch_GameManager_LoadSave.IsPendingEVA(name)) continue;
                         try
                         {
@@ -1164,14 +1189,14 @@ namespace AstronautUnlocker
                         }
                     }
 
-                    // 保留 savedAstronauts，供后续回退恢复；离开世界时再清空
+                    // 保留 savedAstronauts 供后续回退恢复 离开世界时再清空
                 }
 
                 
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1185", e);
             }
         }
 
@@ -1192,7 +1217,10 @@ namespace AstronautUnlocker
                     return new Vector2(topLocal.x, topLocal.y);
                 }
             }
-            catch { }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1208", e);
+            }
             return new Vector2(0f, 0.5f); // 默认回退
         }
 
@@ -1218,7 +1246,10 @@ namespace AstronautUnlocker
                             {
                                 savedList.Add(seat.astronaut.Value);
                                 try { seat.Exit(); }
-                                catch { }
+                                catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1234", e);
+            }
                             }
                         }
                         if (savedList.Count > 0)
@@ -1233,7 +1264,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1247", e);
             }
         }
 
@@ -1250,7 +1281,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1264", e);
             }
         }
 
@@ -1270,7 +1301,10 @@ namespace AstronautUnlocker
                         .Field("getScreenPosition").GetValue<Func<Vector2>>();
                     if (currentPosition != null) position = currentPosition;
                 }
-                catch { }
+                catch (Exception e)
+            {
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1286", e);
+            }
 
                 PartDrawSettings settings = BuildManager.main != null
                     ? PartDrawSettings.BuildSettings
@@ -1278,2806 +1312,10 @@ namespace AstronautUnlocker
                 menu.Open_DrawPart(() => true, new Part[] { part }, settings, position,
                     dontUpdateOnZoomChange: false, skipAnimation: false);
             }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(DevSettings), "get_DisableAstronauts")]
-    public class Patch_DisableAstronauts
-    {
-        static bool Prefix(ref bool __result)
-        {
-            __result = false;
-            return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautState), "Awake")]
-    public class Patch_AstronautState_Awake
-    {
-        static bool Prefix(AstronautState __instance)
-        {
-            if (AstronautState.main != null && AstronautState.main != __instance)
-            {
-                return false;
-            }
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautState), "CreateAstronaut")]
-    public class Patch_AstronautState_CreateAstronaut
-    {
-        static bool Prefix(AstronautState __instance, string astronautName)
-        {
-            try
-            {
-                astronautName = Regex.Replace(astronautName, @"[^\p{L}\p{N} ]", "");
-                astronautName = astronautName.Trim();
-
-                if (astronautName == "")
-                {
-                    Menu.read.Open(() => Loc.main.Invalid_Astronaut_Name);
-                    return false;
-                }
-
-                if (__instance.GetAstronautByName(astronautName) != null)
-                {
-                    Menu.read.Open(() => Loc.main.Astronaut_Already_Exists);
-                    return false;
-                }
-
-                __instance.state.astronauts.Add(
-                    new WorldSave.Astronauts.Data(astronautName, alive: true));
-
-                if (__instance.selfManageSaving)
-                {
-                    Traverse.Create(__instance).Method("Save").GetValue();
-                }
-
-                return false; // 跳过原方法
-            }
             catch (Exception e)
             {
-                
-                return true; // 出错时回退到原方法
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautState), "Start")]
-    public class Patch_AstronautState_Start
-    {
-        static bool Prefix()
-        {
-            return false;
-        }
-    }
-
-    // ============================================================
-    // 回退复活、正常进入保持死亡。
-    // 判断依据：LoadSave 来自 LoadPersistentAndLaunch（正常进入）则保存死亡；
-    // 来自其他回退则复活本次任务死亡的乘员。
-    // ============================================================
-    [HarmonyPatch(typeof(GameManager), "LoadPersistentAndLaunch")]
-    public class Patch_GameManager_LoadPersistentAndLaunch
-    {
-        public static bool isPersistentEntry;
-        // 任务开始前已死亡的乘员名单（回退时不得复活）
-        public static List<string> launchDeadBaseline;
-
-        static void Prefix()
-        {
-                            // 标记下一次 LoadSave 为正常进入
-                isPersistentEntry = true;
-
-                // 注入载入舱的座位不由原生世界存档记录；在进入世界前保留其分配。
-                Patch_GameManager_LoadSave.CaptureInjectedCrewToSavedForLaunch();
-
-                // 记录任务开始前的死亡基线
-
-            launchDeadBaseline = null;
-            if (AstronautState.main?.state?.astronauts != null)
-            {
-                foreach (var a in AstronautState.main.state.astronauts)
-                {
-                    if (!a.alive)
-                    {
-                        if (launchDeadBaseline == null)
-                            launchDeadBaseline = new List<string>();
-                        launchDeadBaseline.Add(a.astronautName);
-                    }
-                }
-            }
-            
-        }
-    }
-
-    [HarmonyPatch(typeof(GameManager), "LoadSave")]
-    public class Patch_GameManager_LoadSave
-    {
-        private static List<WorldSave.Astronauts.Data> backupAstronauts;
-        private static List<string> backupCrewBuild;
-        // 正常发射时，AstronautState 可能持有持久 EVA，而传给 LoadSave 的任务快照尚未带上它们。
-        // 该名单只在本次加载中使用，确保 EVA 先以 EVA 身份恢复，绝不被座位恢复逻辑重复任用。
-        private static List<WorldSave.Astronauts.EVA> backupPersistentEva;
-        private static HashSet<string> pendingEvaNames = new HashSet<string>();
-        private static bool isPersistentEntry;
-        // 标记当前 LoadSave 是否为回退（非正常进入）
-        public static bool isRevertLoad;
-
-        public static bool IsPendingEVA(string astronautName)
-        {
-            return !string.IsNullOrEmpty(astronautName) && pendingEvaNames.Contains(astronautName);
-        }
-
-        static void Prefix(WorldSave save, bool forLaunch)
-        {
-            try
-            {
-                bool markedPersistentEntry = Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry;
-                isPersistentEntry = markedPersistentEntry || forLaunch;
-                Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry = false;
-                isRevertLoad = !isPersistentEntry;
-                
-
-                // 回退会重建世界，注入部件座椅不会被序列化，需先捕获乘员名
-                if (isRevertLoad)
-                {
-                    CaptureInjectedCrewToSaved();
-                }
-
-                // --- 备份覆盖前的内存状态 ---
-                if (AstronautState.main?.state?.astronauts != null &&
-                    AstronautState.main.state.astronauts.Count > 0)
-                {
-                    backupAstronauts = new List<WorldSave.Astronauts.Data>(
-                        AstronautState.main.state.astronauts);
-                }
-
-                backupPersistentEva = null;
-                pendingEvaNames.Clear();
-                if (isPersistentEntry && AstronautState.main?.state?.eva != null &&
-                    AstronautState.main.state.eva.Count > 0)
-                {
-                    backupPersistentEva = new List<WorldSave.Astronauts.EVA>(
-                        AstronautState.main.state.eva.Where(e => e != null));
-                    foreach (WorldSave.Astronauts.EVA eva in backupPersistentEva)
-                        if (!string.IsNullOrEmpty(eva.astronautName)) pendingEvaNames.Add(eva.astronautName);
-                }
-
-                // backupCrewBuild 仅用于建造到世界转换（保留 crew_Build）。
-                // 已死亡乘员不得重新加入 crew_Build/crew_World。
-                if (AstronautState.main?.crew_Build != null && AstronautState.main.crew_Build.Count > 0)
-                {
-                    backupCrewBuild = new List<string>(AstronautState.main.crew_Build);
-                }
-                else
-                {
-                    backupCrewBuild = null;
-                }
-
-                if (save != null && save.astronauts == null)
-                {
-                    save.astronauts = new WorldSave.Astronauts();
-                    
-                }
-                if (save != null && save.astronauts != null)
-                {
-                    if (save.astronauts.astronauts == null)
-                        save.astronauts.astronauts = new List<WorldSave.Astronauts.Data>();
-                    if (save.astronauts.crew_World == null)
-                        save.astronauts.crew_World = new List<WorldSave.Astronauts.Crew_World>();
-                    if (save.astronauts.eva == null)
-                        save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();
-                }
-
-                // --- 将缺失的备份乘员注入存档 ---
-                // 不覆盖已有条目的 alive 标志，存档值是权威的（回退存档为 alive=true）
-                if (backupAstronauts != null && backupAstronauts.Count > 0 &&
-                    save?.astronauts?.astronauts != null)
-                {
-                    foreach (var astro in backupAstronauts)
-                    {
-                        bool exists = save.astronauts.astronauts
-                            .Any(a => a.astronautName == astro.astronautName);
-                        if (!exists)
-                        {
-                            save.astronauts.astronauts.Add(astro);
-                            
-                        }
-                    }
-                }
-
-                // 正常发射必须把持久 EVA 合并到任务快照，否则原生 LoadSave 会以空 EVA 列表
-                // 重建 AstronautState，导致外出人员变成 Available 并可被再次任用。
-                if (backupPersistentEva != null && save?.astronauts?.eva != null)
-                {
-                    foreach (WorldSave.Astronauts.EVA eva in backupPersistentEva)
-                    {
-                        if (!save.astronauts.eva.Any(existing => existing != null &&
-                            existing.astronautName == eva.astronautName))
-                            save.astronauts.eva.Add(eva);
-                    }
-
-                    // 若旧座位缓存中混入 EVA 名称，EVA 身份优先；不允许恢复成座位乘员。
-                    foreach (List<string> names in AstronautUnlockerMod.savedAstronauts.Values)
-                        if (names != null) names.RemoveAll(name => IsPendingEVA(name));
-                }
-
-                // --- 处理 backupCrewBuild（建造到世界转换）---
-                // 确保 crew_Build 乘员进入世界的 crew_World
-                if (backupCrewBuild != null && backupCrewBuild.Count > 0 &&
-                    save?.astronauts != null)
-                {
-                    if (save.astronauts.crew_World == null)
-                        save.astronauts.crew_World = new List<WorldSave.Astronauts.Crew_World>();
-                    if (save.astronauts.eva == null)
-                        save.astronauts.eva = new List<WorldSave.Astronauts.EVA>();
-
-                    foreach (string name in backupCrewBuild)
-                    {
-                        // EVA 状态优先：不能因旧 crew_Build 缓存被改写为座舱乘员。
-                        bool isOnEVA = save.astronauts.eva.Any(e => e != null && e.astronautName == name);
-                        if (isOnEVA) continue;
-
-                        save.astronauts.crew_World.RemoveAll(c => c != null && c.astronautName == name);
-                        bool exists = save.astronauts.crew_World.Any(c => c != null && c.astronautName == name);
-                        if (!exists)
-                        {
-                            save.astronauts.crew_World.Add(new WorldSave.Astronauts.Crew_World
-                            {
-                                astronautName = name
-                            });
-                        }
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        static void Postfix()
-        {
-            try
-            {
-                if (AstronautState.main != null)
-                {
-                    if (AstronautState.main.crew_Build == null)
-                        AstronautState.main.crew_Build = new List<string>();
-
-                    if (AstronautState.main.state == null)
-                        AstronautState.main.state = new WorldSave.Astronauts();
-
-                    if (AstronautState.main.state.crew_World == null)
-                        AstronautState.main.state.crew_World =
-                            new List<WorldSave.Astronauts.Crew_World>();
-                    if (AstronautState.main.state.eva == null)
-                        AstronautState.main.state.eva =
-                            new List<WorldSave.Astronauts.EVA>();
-                    if (AstronautState.main.state.astronauts == null)
-                        AstronautState.main.state.astronauts =
-                            new List<WorldSave.Astronauts.Data>();
-                }
-
-                if (backupAstronauts != null && backupAstronauts.Count > 0)
-                {
-                    if (AstronautState.main?.state?.astronauts != null)
-                    {
-                        foreach (var astro in backupAstronauts)
-                        {
-                            // 仅添加缺失项，不覆盖 alive 标志（存档值为权威）
-                            bool exists = AstronautState.main.state.astronauts
-                                .Any(a => a.astronautName == astro.astronautName);
-                            if (!exists)
-                            {
-                                AstronautState.main.state.astronauts.Add(astro);
-                                
-                            }
-                        }
-                    }
-                    backupAstronauts = null;
-                }
-
-                // 仅在建造场景保留 crew_Build；进入世界后不得把旧建造缓存重新写回。
-                if (BuildManager.main != null && backupCrewBuild != null && backupCrewBuild.Count > 0)
-                {
-                    if (AstronautState.main?.crew_Build != null)
-                    {
-                        foreach (string name in backupCrewBuild)
-                        {
-                            if (!AstronautState.main.crew_Build.Contains(name))
-                                AstronautState.main.crew_Build.Add(name);
-                        }
-                    }
-                }
-                backupCrewBuild = null;
-
-                Patch_Seat_OnDestroy.destroyedSeatAstronauts.Clear();
-
-                // --- 回退复活 ---
-                // 这是真正的回退（非正常进入）。存档可能带 stale alive=false，
-                // 仅复活任务开始前仍存活、本次任务死亡的乘员。
-                
-                if (!isPersistentEntry && AstronautState.main?.state?.astronauts != null)
-                {
-                    var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
-                    foreach (var member in AstronautState.main.state.astronauts)
-                    {
-                        if (!member.alive &&
-                            (baseline == null || !baseline.Contains(member.astronautName)))
-                        {
-                            member.alive = true;
-                            
-                        }
-                    }
-                }
-                isPersistentEntry = false;
-                isRevertLoad = false;
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        // 回退前捕获注入部件座椅上的乘员名到 savedAstronauts，
-        // 供重建后的座椅恢复（回退会清空世界）
-        private static void CaptureInjectedCrewToSaved()
-        {
-            CaptureCrewToSaved(injectedOnly: true);
-        }
-
-        public static void CaptureInjectedCrewToSavedForLaunch()
-        {
-            CaptureCrewToSaved(injectedOnly: true);
-        }
-
-        public static void CaptureAllCrewToSaved()
-        {
-            CaptureCrewToSaved(injectedOnly: false);
-        }
-
-        private static void CaptureCrewToSaved(bool injectedOnly)
-        {
-            try
-            {
-                CrewModule[] allCrews = UnityEngine.Object.FindObjectsOfType<CrewModule>(true);
-                bool changed = false;
-                foreach (CrewModule crew in allCrews)
-                {
-                    if (crew == null || crew.seats == null) continue;
-                    Part part = Traverse.Create(crew).Field("part").GetValue<Part>();
-                    if (part == null || string.IsNullOrEmpty(part.name)) continue;
-                    if (injectedOnly && !AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID())) continue;
-
-                    List<string> names = crew.seats
-                        .Where(seat => seat?.astronaut != null && !string.IsNullOrEmpty(seat.astronaut.Value))
-                        .Select(seat => seat.astronaut.Value)
-                        .Distinct().ToList();
-                    if (names.Count == 0) continue;
-
-                    if (!AstronautUnlockerMod.savedAstronauts.ContainsKey(part.name))
-                        AstronautUnlockerMod.savedAstronauts[part.name] = new List<string>();
-                    foreach (string name in names)
-                    {
-                        if (!AstronautUnlockerMod.savedAstronauts[part.name].Contains(name))
-                        {
-                            AstronautUnlockerMod.savedAstronauts[part.name].Add(name);
-                            changed = true;
-                        }
-                    }
-                }
-                if (changed) AstronautUnlockerMod.SaveEvaConfig();
-            }
-            catch { }
-        }
-    }
-
-    // --- 正常退出世界清空 savedAstronauts ---
-    // 离开世界（新建火箭 / 返回中心 / 主菜单）即进入全新上下文。
-    // 清空可防止此前捕获的（可能已死亡）乘员被自动恢复到新建造中。
-    [HarmonyPatch(typeof(GameManager), "ExitToBuild")]
-    public class Patch_GameManager_ExitToBuild_ClearSaved
-    {
-        static void Prefix()
-        {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToBuild");
-        }
-    }
-
-    [HarmonyPatch(typeof(GameManager), "ExitToHub")]
-    public class Patch_GameManager_ExitToHub_ClearSaved
-    {
-        static void Prefix()
-        {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToHub");
-        }
-    }
-
-    [HarmonyPatch(typeof(GameManager), "ExitToMainMenu")]
-    public class Patch_GameManager_ExitToMainMenu_ClearSaved
-    {
-        static void Prefix()
-        {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToMainMenu");
-        }
-    }
-
-    // --- 回退到建造也复活 ---
-    // RevertToBuild 不走 LoadSave，而是用 deleteRevert=true 持久化发射快照。
-    // 此处同样复活，使回退撤销死亡；正常保存/退出（deleteRevert=false）保持死亡。
-    [HarmonyPatch(typeof(SavingCache), "SaveWorldPersistent")]
-    public class Patch_SavingCache_SaveWorldPersistent_ReviveOnRevertBuild
-    {
-        static void Prefix(WorldSave new_WorldPersistent, bool deleteRevert)
-        {
-            if (!deleteRevert) return;
-            try
-            {
-                if (new_WorldPersistent?.astronauts?.astronauts == null) return;
-                var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
-                foreach (var sd in new_WorldPersistent.astronauts.astronauts)
-                {
-                    // 仅复活本次任务死亡的乘员；任务前已死亡的保持死亡
-                    if (!sd.alive &&
-                        (baseline == null || !baseline.Contains(sd.astronautName)))
-                    {
-                        sd.alive = true;
-                        
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Astronaut_EVA), "StartDeathAnimation")]
-    public class Patch_EVA_DeathAnimation
-    {
-        static bool Prefix(Astronaut_EVA __instance, float startTime)
-        {
-            if (AstronautManager.main == null || AstronautManager.main.fadeToBlack == null)
-            {
-                
-                try
-                {
-                    __instance.astronaut.alive = false;
-                }
-                catch { }
-                AstronautManager.DestroyEVA(__instance, death: true);
-                return false; // 跳过原 StartDeathAnimation
-            }
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "Start")]
-    public class Patch_AstronautMenu_Start
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "Update")]
-    public class Patch_AstronautMenu_Update
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "OnOpen")]
-    public class Patch_AstronautMenu_OnOpen
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "OnClose")]
-    public class Patch_AstronautMenu_OnClose
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "DrawList")]
-    public class Patch_AstronautMenu_DrawList
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "CreateAstronaut")]
-    public class Patch_AstronautMenu_CreateAstronaut
-    {
-        static bool Prefix()
-        {
-            NativeAstronautUI.OpenCreateDialog(false);
-            return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "FireAstronaut")]
-    public class Patch_AstronautMenu_FireAstronaut
-    {
-        static bool Prefix() { return false; }
-    }
-
-    [HarmonyPatch(typeof(AstronautMenu), "OpenMenu")]
-    public class Patch_AstronautMenu_OpenMenu
-    {
-        static bool Prefix(AstronautMenu __instance, CrewModule.Seat seat, Action redrawSeat)
-        {
-            NativeAstronautUI.ShowMenu(seat, redrawSeat);
-            return false; // skip original (which needs null prefabs)
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule.Seat), "OnStart")]
-    public class Patch_Seat_OnStart
-    {
-        static bool Prefix(CrewModule.Seat __instance)
-        {
-            try
-            {
-                var tr = Traverse.Create(__instance);
-                var astronautRef = tr.Field("astronaut").GetValue<String_Reference>();
-                string astronautName = astronautRef?.Value;
-
-                if (string.IsNullOrEmpty(astronautName))
-                    return false; // No astronaut, skip (original returns early too)
-
-                if (AstronautState.main == null || AstronautState.main.state == null)
-                {
-                    return false; // Don't let original clear the seat
-                }
-
-                if (AstronautState.main.crew_Build == null)
-                    AstronautState.main.crew_Build = new List<string>();
-                if (AstronautState.main.state.crew_World == null)
-                    AstronautState.main.state.crew_World =
-                        new List<WorldSave.Astronauts.Crew_World>();
-                if (AstronautState.main.state.eva == null)
-                    AstronautState.main.state.eva =
-                        new List<WorldSave.Astronauts.EVA>();
-                if (AstronautState.main.state.astronauts == null)
-                    AstronautState.main.state.astronauts =
-                        new List<WorldSave.Astronauts.Data>();
-
-                AstronautState.State state = NativeAstronautUI.SafeGetAstronautState(astronautName);
-                
-
-                if (state == AstronautState.State.Available)
-                {
-                    
-                    AstronautState.main.AddCrew(astronautName);
-                    tr.Method("AddSeatedAstronaut").GetValue();
-                    return false;
-                }
-                else if (state == AstronautState.State.CrewWorld)
-                {
-                    
-                    tr.Method("AddSeatedAstronaut").GetValue();
-                    return false;
-                }
-                else if (state == AstronautState.State.CrewBuild)
-                {
-                    
-                    if (BuildManager.main == null)
-                    {
-                        AstronautState.main.crew_Build.Remove(astronautName);
-                        AstronautState.main.AddCrew(astronautName); // Adds to crew_World in world mode
-                    }
-                    tr.Method("AddSeatedAstronaut").GetValue();
-                    return false;
-                }
-                else
-                {
-                    
-                    // 回退时存档的 alive 标志已过时（本次任务死亡但被回退复活）。
-                    // 保留座椅乘员不清空，但仅限本次任务死亡的乘员，任务前已死亡的不恢复。
-                    var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
-                    bool deadBeforeLaunch = baseline != null && baseline.Contains(astronautName);
-                    if (Patch_GameManager_LoadSave.isRevertLoad && !deadBeforeLaunch)
-                    {
-                        AstronautState.main.AddCrew(astronautName);
-                        tr.Method("AddSeatedAstronaut").GetValue();
-                        
-                        return false;
-                    }
-
-                    
-                    astronautRef.Value = "";
-                    bool externalSeat = tr.Field<bool>("externalSeat").Value;
-                    if (externalSeat)
-                    {
-                        var resources = tr.Field("resources").GetValue<EVA_Resources>();
-                        if (resources != null)
-                            resources.fuelPercent.Value = -1.0;
-                    }
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                
-                return false;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule.Seat), "OnDestroy")]
-    public class Patch_Seat_OnDestroy
-    {
-        public static List<string> destroyedSeatAstronauts = new List<string>();
-
-        static bool Prefix(CrewModule.Seat __instance)
-        {
-            try
-            {
-                var tr = Traverse.Create(__instance);
-                var astronautRef = tr.Field("astronaut").GetValue<String_Reference>();
-                string astronautName = astronautRef?.Value;
-
-                if (string.IsNullOrEmpty(astronautName))
-                    return false; // 无乘员则跳过
-
-                if (!destroyedSeatAstronauts.Contains(astronautName))
-                    destroyedSeatAstronauts.Add(astronautName);
-
-                
-
-                // 从 crew_Build（建造）或 crew_World（世界）移除
-                if (AstronautState.main != null)
-                {
-                    AstronautState.main.RemoveCrew(astronautName);
-
-                    // 世界场景中舱体销毁即乘员死亡（原游戏行为）
-                    if (GameManager.main != null)
-                    {
-                        var data = AstronautState.main.GetAstronautByName(astronautName);
-                        if (data != null)
-                        {
-                            data.alive = false;
-                            
-                        }
-                        else
-                        {
-                            
-                        }
-                    }
-                }
-
-                return false; // 跳过原方法
-            }
-            catch (Exception e)
-            {
-                
-                return true; // 出错时回退到原方法
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule.Seat), "Board")]
-    public class Patch_Seat_Board_SaveFuel
-    {
-        static void Postfix(CrewModule.Seat __instance, string astronautName, double fuelPercent)
-        {
-            try
-            {
-                if (!__instance.externalSeat)
-                {
-                    NativeAstronautUI.savedInternalFuel[astronautName] = fuelPercent;
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule), "EVA_Exit")]
-    public class Patch_CrewModule_EVA_Exit_Fuel
-    {
-        static bool Prefix(CrewModule __instance, CrewModule.Seat seat)
-        {
-            try
-            {
-                if (!PlanetSurfaceHelper.IsSolidPlanet(__instance))
-                {
-                    Menu.read.Open(() => "Cannot perform EVA on a gas giant — no solid surface to walk on!");
-                    return false;
-                }
-
-                string name = seat.astronaut?.Value;
-                if (!string.IsNullOrEmpty(name) && !seat.externalSeat)
-                {
-                    if (NativeAstronautUI.savedInternalFuel.ContainsKey(name))
-                    {
-                        NativeAstronautUI.pendingFuelOverride = NativeAstronautUI.savedInternalFuel[name];
-                        NativeAstronautUI.savedInternalFuel.Remove(name);
-                    }
-                    else
-                    {
-                        NativeAstronautUI.pendingFuelOverride = 1.0;
-                    }
-                }
-            }
-            catch { }
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "SpawnEVA")]
-    public class Patch_AstronautManager_SpawnEVA_Fuel
-    {
-        static void Prefix(ref double fuelPercent)
-        {
-            if (NativeAstronautUI.pendingFuelOverride.HasValue)
-            {
-                fuelPercent = NativeAstronautUI.pendingFuelOverride.Value;
-                NativeAstronautUI.pendingFuelOverride = null;
-            }
-        }
-
-        static void Postfix(Astronaut_EVA __result)
-        {
-            try
-            {
-                // Runtime diagnostics showed that the game's Body sprite is an atlas entry
-                // named "Screenshot ..._0", not one of the four reference part sprites.
-                // Do not substitute mismatched art: it distorts the astronaut's body layout.
-                // Keep the native Body/Head relationship until matching source pixels are available.
-                EVAControlRecovery.Attach(__result);
-            }
-            catch { }
-        }
-    }
-
-    // EndMissionMenu 检查 HasCrew：为 true 会强制销毁流程（无法回收）。
-    // 本模组在 PC 端启用乘员，座椅有名字导致 HasCrew=true 阻止回收。
-    // 补丁返回 false 以走正常回收/销毁流程。
-    [HarmonyPatch(typeof(CrewModule), "get_HasCrew")]
-    public class Patch_CrewModule_HasCrew
-    {
-        static bool Prefix(ref bool __result)
-        {
-            __result = false;
-            return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(Rocket), "UseParts")]
-    public class Patch_Rocket_UseParts
-    {
-        static HashSet<int> patchedParts = new HashSet<int>();
-
-        public static void ClearPatchedParts()
-        {
-            patchedParts.Clear();
-        }
-
-        static bool Prefix(bool fromStaging, (Part, PolygonData)[] regions)
-        {
-            try
-            {
-                if (regions == null || regions.Length == 0)
-                    return true; // Let original handle empty case
-
-                foreach (var region in regions)
-                {
-                    Part part = region.Item1;
-                    if (part == null || part.onPartUsed == null) continue;
-
-                    int id = part.GetInstanceID();
-                    if (patchedParts.Contains(id)) continue;
-
-                    DetachModule[] detachModules = part.GetModules<DetachModule>();
-                    if (detachModules != null && detachModules.Length > 0)
-                    {
-                        DetachModule dm = detachModules[0];
-                        part.onPartUsed.AddListener((UsePartData data) =>
-                        {
-                            try { dm.Detach(data); }
-                            catch (Exception e)
-                            {
-                                
-                            }
-                        });
-                        patchedParts.Add(id);
-                    }
-
-                    SplitModule[] splitModules = part.GetModules<SplitModule>();
-                    if (splitModules != null && splitModules.Length > 0)
-                    {
-                        SplitModule sm = splitModules[0];
-                        part.onPartUsed.AddListener((UsePartData data) =>
-                        {
-                            try { sm.Split(data); }
-                            catch (Exception e)
-                            {
-                                
-                            }
-                        });
-                        patchedParts.Add(id);
-                    }
-                }
-                return true; // Let original method run — preserves recovery logic
-            }
-            catch (Exception e)
-            {
-                
-                return true;
-            }
-        }
-
-        static void Postfix(bool fromStaging, (Part, PolygonData)[] regions,
-            ref UsePartData[] __result)
-        {
-            try
-            {
-                if (regions == null) return;
-
-                // PC 部件无持久化事件，原 UseParts 会跳过它们。
-                // 手动用结果数据调用 onPartUsed。
-                if (__result != null && __result.Length == regions.Length)
-                {
-                    for (int i = 0; i < regions.Length; i++)
-                    {
-                        Part part = regions[i].Item1;
-                        if (part == null || part.onPartUsed == null) continue;
-
-                        int eventCount = part.onPartUsed.GetPersistentEventCount();
-                        if (eventCount == 0)
-                        {
-                            part.onPartUsed.Invoke(__result[i]);
-                        }
-                    }
-                }
-
-                if (fromStaging) return;
-
-                foreach (var region in regions)
-                {
-                    Part part = region.Item1;
-                    if (part == null) continue;
-
-                    CrewModule[] crewModules = part.GetModules<CrewModule>();
-                    if (crewModules == null || crewModules.Length == 0) continue;
-
-                    int eventCount = (part.onPartUsed != null)
-                        ? part.onPartUsed.GetPersistentEventCount() : 0;
-                    if (eventCount == 0)
-                    {
-                        crewModules[0].OpenPartMenu_Seats();
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule), "OpenPartMenu")]
-    public class Patch_CrewModule_OpenPartMenu
-    {
-        static bool Prefix(CrewModule __instance, bool canBoardWorld)
-        {
-            try
-            {
-                if (BuildManager.main == null)
-                {
-                    AttachableStatsMenu menu = UnityEngine.Object.FindObjectOfType<AttachableStatsMenu>(includeInactive: true);
-                    if (menu == null)
-                    {
-                        
-                        SeatMenuFallback.Show(__instance, canBoardWorld);
-                        return false;
-                    }
-                }
-                return true; // 让原方法运行
-            }
-            catch (Exception e)
-            {
-                
-                return true;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule), "OpenPartMenu_Seats")]
-    public class Patch_CrewModule_OpenPartMenu_Seats
-    {
-        static void Prefix(CrewModule __instance)
-        {
-            try
-            {
-                int seatCount = __instance.seats?.Length ?? 0;
-                int occupied = __instance.seats?.Count(s => s.HasAstronaut) ?? 0;
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(CrewModule), "OnSeatChange")]
-    public class Patch_CrewModule_OnSeatChange
-    {
-        static bool Prefix(CrewModule __instance)
-        {
-            try
-            {
-                var tr = Traverse.Create(__instance);
-
-                SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
-                bool disableAstronauts = DevSettings.DisableAstronauts;
-
-                bool anyHasAstronaut = false;
-                if (__instance.seats != null)
-                {
-                    foreach (var seat in __instance.seats)
-                    {
-                        if (seat.HasAstronaut) { anyHasAstronaut = true; break; }
-                    }
-                }
-
-                bool hasControl = disableAstronauts ||
-                    AstronautUnlockerMod.allowUncrewedControl || anyHasAstronaut;
-
-                var hasControlRef = tr.Field("hasControl")
-                    .GetValue<SFS.Variables.Bool_Reference>();
-                if (hasControlRef != null)
-                    hasControlRef.Value = hasControl;
-
-                var hatch = tr.Field("hatch").GetValue<GameObject>();
-                if (hatch != null)
-                    hatch.SetActive(hasControl);
-
-                var interior = tr.Field("interior").GetValue<GameObject>();
-                if (interior != null && !interior.activeSelf)
-                {
-                    interior.SetActive(true);
-                }
-
-                float baseMass = tr.Field("baseMass").GetValue<float>();
-                float seatMass = 0f;
-                if (__instance.seats != null)
-                {
-                    foreach (var seat in __instance.seats)
-                    {
-                        if (seat.HasAstronaut) seatMass += 0.2f;
-                    }
-                }
-                if (part != null && part.mass != null)
-                    part.mass.Value = baseMass + seatMass;
-
-                return false; // 完全跳过原 OnSeatChange
-            }
-            catch (Exception e)
-            {
-                
-                return true; // 出错时回退到原方法
-            }
-        }
-    }
-
-    public static class SeatMenuFallback
-    {
-        public static void Show(CrewModule crewModule, bool canBoardWorld)
-        {
-            try
-            {
-                List<MenuElement> elements = new List<MenuElement>();
-                SizeSyncerBuilder.Carrier carrier;
-                elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
-
-                CrewModule.Seat[] seats = crewModule.seats;
-                if (seats == null || seats.Length == 0)
-                {
-                    elements.Add(TextBuilder.CreateText(() => "No seats"));
-                }
-
-                foreach (CrewModule.Seat seat in seats)
-                {
-                    CrewModule.Seat capturedSeat = seat;
-                    bool hasAstro = capturedSeat.HasAstronaut;
-                    string astroName = hasAstro ? capturedSeat.astronaut.Value : "";
-                    bool enabled = hasAstro || canBoardWorld;
-
-                    if (!enabled)
-                    {
-                        elements.Add(TextBuilder.CreateText(() => "(Empty seat)"));
-                        continue;
-                    }
-
-                    string displayText = hasAstro
-                        ? ("EVA Exit — " + astroName)
-                        : "EVA Board";
-                    CrewModule capturedModule = crewModule;
-                    bool capturedHasAstro = hasAstro;
-
-                    elements.Add(ButtonBuilder.CreateButton(carrier,
-                        () => displayText,
-                        () =>
-                        {
-                            try
-                            {
-                                if (capturedHasAstro)
-                                {
-                                    Traverse.Create(capturedModule).Method("EVA_Exit", capturedSeat).GetValue();
-                                }
-                                else
-                                {
-                                    Traverse.Create(capturedModule).Method("EVA_Board", capturedSeat).GetValue();
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                
-                            }
-                        },
-                        CloseMode.Current));
-                }
-
-                elements.Add(ElementGenerator.VerticalSpace(20));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Close",
-                    () => { },
-                    CloseMode.Current));
-
-                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "SpawnFlag")]
-    public class Patch_AstronautManager_SpawnFlag
-    {
-        static bool Prefix(AstronautManager __instance, ref Flag __result,
-            Location location, int direction)
-        {
-            try
-            {
-                if (__instance.flagPrefab != null)
-                    return true; // Original prefab exists, use original
-
-                __result = FlagFallback.CreateFlag(location, direction);
-                return false;
-            }
-            catch (Exception e)
-            {
-                return true;
-            }
-        }
-
-        static void Postfix(Flag __result, Location location, int direction)
-        {
-            try
-            {
-                FlagCustomization.OnFlagSpawned(__result, location, direction);
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "DestroyFlag")]
-    public class Patch_AstronautManager_DestroyFlag
-    {
-        static void Prefix(Flag flag)
-        {
-            try
-            {
-                FlagCustomization.ForgetFlag(flag);
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(Flag), "Start")]
-    public class Patch_Flag_Start
-    {
-        static bool Prefix(Flag __instance)
-        {
-            try
-            {
-                var tr = Traverse.Create(__instance);
-                Transform holder = tr.Field<Transform>("holder").Value;
-                MapIcon mapIcon = tr.Field<MapIcon>("mapIcon").Value;
-                int direction = tr.Field<int>("direction").Value;
-
-                if (holder != null)
-                {
-                    holder.localScale = new Vector2(direction, 1f);
-                    holder.rotation = Quaternion.Euler(0f, 0f,
-                        (float)__instance.location.position.Value.AngleDegrees - 90f);
-                }
-
-                if (mapIcon != null && mapIcon.mapIcon != null)
-                {
-                    mapIcon.SetRotation(holder.rotation.eulerAngles.z + 90f);
-                }
-
-                
-                return false; // Skip original (handles null safely)
-            }
-            catch (Exception e)
-            {
-                
-                return true;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "PlantFlag")]
-    public class Patch_AstronautManager_PlantFlag
-    {
-        static bool Prefix()
-        {
-            try
-            {
-                if (PlayerController.main?.player?.Value is Astronaut_EVA eva)
-                {
-                    if (!PlanetSurfaceHelper.IsSolidPlanet(eva))
-                    {
-                        Menu.read.Open(() => "Cannot plant a flag on a gas giant — no solid surface!");
-                        return false;
-                    }
-                    FlagCustomization.BeginPlant(eva);
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-            return true;
-        }
-
-        static void Postfix()
-        {
-            // SpawnFlag consumes the pending style synchronously. Clearing here also prevents
-            // a failed original PlantFlag call (for example, a nearby-flag rejection) from
-            // leaking that style into a later unrelated SpawnFlag call.
-            FlagCustomization.CancelPendingPlant();
-        }
-    }
-
-    public static class FlagFallback
-    {
-        private static Sprite flagSprite;
-
-        public static Flag CreateFlag(Location location, int direction)
-        {
-            GameObject root = new GameObject("__FallbackFlag");
-            root.SetActive(false); // Prevent OnEnable before setup
-
-            Flag flag = root.AddComponent<Flag>();
-
-            var tr = Traverse.Create(flag);
-            var worldLoc = tr.Field<WorldLocation>("location").Value;
-            if (worldLoc == null)
-            {
-                worldLoc = root.AddComponent<WorldLocation>();
-                tr.Field("location").SetValue(worldLoc);
-            }
-            worldLoc.planet.Value = location.planet;
-            worldLoc.position.Value = location.position;
-            worldLoc.velocity.Value = location.velocity;
-
-            GameObject holderObj = new GameObject("Holder");
-            holderObj.transform.SetParent(root.transform, false);
-            holderObj.transform.localPosition = Vector3.zero;
-
-            SpriteRenderer sr = holderObj.AddComponent<SpriteRenderer>();
-            sr.sprite = GetFlagSprite();
-            sr.color = new Color(0.9f, 0.2f, 0.2f, 1f); // Red flag
-            // Keep fallback flag art behind active EVA sprites.  The previous order of 100
-            // caused the entire sign to cover the astronaut in front of it.
-            sr.sortingOrder = -1;
-            holderObj.transform.localScale = new Vector3(0.3f, 0.6f, 1f);
-            holderObj.transform.localPosition = new Vector3(0f, 0.3f, 0f);
-
-            tr.Field("holder").SetValue(holderObj.transform);
-
-            tr.Field("direction").SetValue(direction);
-
-            tr.Field("mapIcon").SetValue(null);
-
-            root.transform.position = WorldView.ToLocalPosition(location.position);
-
-            root.SetActive(true);
-
-            return flag;
-        }
-
-        private static Sprite GetFlagSprite()
-        {
-            if (flagSprite != null) return flagSprite;
-
-            flagSprite = UnityEngine.Resources.Load<Sprite>("Flag");
-            if (flagSprite != null) return flagSprite;
-
-            Texture2D tex = new Texture2D(4, 4);
-            Color[] pixels = new Color[16];
-            for (int i = 0; i < 16; i++) pixels[i] = Color.white;
-            tex.SetPixels(pixels);
-            tex.Apply();
-            flagSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
-            return flagSprite;
-        }
-    }
-
-    public static class PlanetSurfaceHelper
-    {
-        public static bool IsSolidPlanet(Astronaut_EVA eva)
-        {
-            if (eva == null) return true;
-            try
-            {
-                WorldLocation wl = eva.location;
-                if (wl == null) return true;
-                Planet planet = wl.planet.Value;
-                if (planet == null || planet.data == null) return true;
-                return planet.data.hasTerrain;
-            }
-            catch { return true; }
-        }
-
-        public static bool IsSolidPlanet(CrewModule crewModule)
-        {
-            if (crewModule == null) return true;
-            try
-            {
-                Rocket rocket = crewModule.GetComponent<Rocket>();
-                if (rocket == null) return true;
-                WorldLocation wl = rocket.location;
-                if (wl == null) return true;
-                Planet planet = wl.planet.Value;
-                if (planet == null || planet.data == null) return true;
-                return planet.data.hasTerrain;
-            }
-            catch { return true; }
-        }
-    }
-
-    public static class PlantFlagButtonHelper
-    {
-        private static ModGUIButton plantFlagButton;
-        private static GameObject flagBtnHolder;
-
-        public static void Update()
-        {
-            try
-            {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
-
-                bool hasSolidSurface = true;
-                if (isEVA)
-                {
-                    Astronaut_EVA eva = PlayerController.main.player.Value as Astronaut_EVA;
-                    hasSolidSurface = PlanetSurfaceHelper.IsSolidPlanet(eva);
-                }
-
-                if (isEVA && hasSolidSurface && plantFlagButton == null)
-                {
-                    flagBtnHolder = ModGUIBuilder.CreateHolder(
-                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_FlagBtn");
-                    plantFlagButton = ModGUIBuilder.CreateButton(
-                        flagBtnHolder.transform, 150, 50,
-                        450, -250,
-                        () =>
-                        {
-                            if (AstronautManager.main != null)
-                            {
-                                AstronautManager.main.PlantFlag();
-                            }
-                        },
-                        "Plant Flag");
-                }
-                else if ((!isEVA || !hasSolidSurface) && plantFlagButton != null)
-                {
-                    if (flagBtnHolder != null)
-                        UnityEngine.Object.Destroy(flagBtnHolder);
-                    plantFlagButton = null;
-                    flagBtnHolder = null;
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    public class UpdateDriver : MonoBehaviour
-    {
-        private float timer;
-        private static float crewRefreshTimer = -1f;
-        private static bool pendingMenuRefresh = false;
-        private static float pickGridRefreshTimer = -1f;
-        private static Part pendingCrewCapacityPart;
-        private static bool refreshMenuAfterCrewCapacityApply;
-        private static float crewCapacityApplyTimer = -1f;
-
-        public static void ScheduleCrewModuleRefresh()
-        {
-            crewRefreshTimer = 1.0f; // Wait 1 second for parts to fully initialize
-        }
-
-        public static void ScheduleMenuRefresh()
-        {
-            pendingMenuRefresh = true;
-        }
-
-        public static void ScheduleCrewCapacityApply(Part part, bool refreshMenu = true)
-        {
-            pendingCrewCapacityPart = part;
-            refreshMenuAfterCrewCapacityApply = refreshMenu;
-            crewCapacityApplyTimer = 0.25f;
-        }
-
-        public static void SchedulePickGridRefresh()
-        {
-            pickGridRefreshTimer = 0.1f; // Wait 0.1s for scene to fully load
-        }
-
-        private static void DoPickGridRefresh()
-        {
-            try
-            {
-                if (BuildManager.main == null || BuildManager.main.pickGrid == null)
-                {
-                    pickGridRefreshTimer = 0.1f;
-                    return;
-                }
-
-                var pickGrid = BuildManager.main.pickGrid;
-                var catMenu = pickGrid.categoriesMenu;
-
-                var tr = Traverse.Create(catMenu);
-                var selected = tr.Field("selected").GetValue<PickGridUI.CategoryParts>();
-
-                if (selected != null)
-                {
-                    catMenu.SelectCategory(selected);
-                }
-                else
-                {
-                    pickGridRefreshTimer = 0.1f;
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        private void Update()
-        {
-            timer += Time.deltaTime;
-            if (timer >= 0.5f)
-            {
-                timer = 0f;
-                PlantFlagButtonHelper.Update();
-                TeleportButtonHelper.Update();
-                AstronautDashboardHelper.Update();
-            }
-
-            if (PartIconCreator.main != null)
-            {
-                Camera iconCam = PartIconCreator.main.GetComponent<Camera>();
-                if (iconCam != null && !NativeAstronautUI.IsIconCameraDisabled(iconCam))
-                {
-                    NativeAstronautUI.DisableIconCamera(iconCam);
-                }
-            }
-
-            if (pendingMenuRefresh)
-            {
-                pendingMenuRefresh = false;
-                NativeAstronautUI.ShowMenu(null, null, CloseMode.None);
-            }
-
-            if (crewRefreshTimer > 0f)
-            {
-                crewRefreshTimer -= Time.deltaTime;
-                if (crewRefreshTimer <= 0f)
-                {
-                    crewRefreshTimer = -1f;
-                    RefreshCrewModuleVisuals();
-                }
-            }
-
-            if (crewCapacityApplyTimer > 0f)
-            {
-                crewCapacityApplyTimer -= Time.deltaTime;
-                if (crewCapacityApplyTimer <= 0f)
-                {
-                    Part part = pendingCrewCapacityPart;
-                    bool refreshMenu = refreshMenuAfterCrewCapacityApply;
-                    pendingCrewCapacityPart = null;
-                    refreshMenuAfterCrewCapacityApply = false;
-                    crewCapacityApplyTimer = -1f;
-                    if (part != null && AstronautUnlockerMod.ApplyCrewCapacity(part) && refreshMenu)
-                        AstronautUnlockerMod.ReopenPartMenu(part);
-                }
-            }
-
-            if (pickGridRefreshTimer > 0f)
-            {
-                pickGridRefreshTimer -= Time.deltaTime;
-                if (pickGridRefreshTimer <= 0f)
-                {
-                    pickGridRefreshTimer = -1f;
-                    DoPickGridRefresh();
-                }
-            }
-        }
-
-        private void LateUpdate()
-        {
-            EVAStatsPanelHider.LateUpdate();
-            if (PartIconCreator.main != null)
-            {
-                Camera iconCam = PartIconCreator.main.GetComponent<Camera>();
-                if (iconCam != null && !NativeAstronautUI.IsIconCameraDisabled(iconCam))
-                {
-                    NativeAstronautUI.DisableIconCamera(iconCam);
-                }
-            }
-        }
-
-        private static void RefreshCrewModuleVisuals()
-        {
-            try
-            {
-                Transform pickGridHolder = null;
-                try
-                {
-                    if (BuildManager.main != null && BuildManager.main.pickGrid != null &&
-                        BuildManager.main.pickGrid.createdPartsHolder != null)
-                    {
-                        pickGridHolder = BuildManager.main.pickGrid.createdPartsHolder.transform;
-                    }
-                }
-                catch { }
-
-                CrewModule[] modules = UnityEngine.Object.FindObjectsOfType<CrewModule>(includeInactive: true);
-                int refreshed = 0;
-                int skipped = 0;
-                foreach (CrewModule cm in modules)
-                {
-                    try
-                    {
-                        var tr = Traverse.Create(cm);
-
-                        bool anyHasAstronaut = false;
-                        if (cm.seats != null)
-                        {
-                            foreach (var seat in cm.seats)
-                            {
-                                if (seat.HasAstronaut) { anyHasAstronaut = true; break; }
-                            }
-                        }
-                        bool hasControl = DevSettings.DisableAstronauts ||
-                            AstronautUnlockerMod.allowUncrewedControl || anyHasAstronaut;
-
-                        var hasControlRef = tr.Field("hasControl")
-                            .GetValue<SFS.Variables.Bool_Reference>();
-                        if (hasControlRef != null)
-                            hasControlRef.Value = hasControl;
-
-                        float baseMass = tr.Field("baseMass").GetValue<float>();
-                        float seatMass = 0f;
-                        if (cm.seats != null)
-                            foreach (var seat in cm.seats)
-                                if (seat.HasAstronaut) seatMass += 0.2f;
-                        SFS.Parts.Part part = tr.Field("part").GetValue<SFS.Parts.Part>();
-                        if (part != null && part.mass != null)
-                            part.mass.Value = baseMass + seatMass;
-
-                        if (pickGridHolder != null && part != null &&
-                            part.transform.IsChildOf(pickGridHolder))
-                        {
-                            skipped++;
-                            continue;
-                        }
-
-                        var interior = tr.Field("interior").GetValue<GameObject>();
-                        if (interior != null && !interior.activeSelf)
-                        {
-                            interior.SetActive(true);
-                        }
-
-                        if (part != null && part.gameObject != null && !part.gameObject.activeSelf)
-                        {
-                            part.gameObject.SetActive(true);
-                        }
-
-                        if (part != null && part.gameObject != null)
-                        {
-                            MeshRenderer[] renderers = part.GetComponentsInChildren<MeshRenderer>(true);
-                            foreach (var mr in renderers)
-                            {
-                                if (!mr.enabled)
-                                {
-                                    mr.enabled = true;
-                                }
-                            }
-                            SkinnedMeshRenderer[] skinned = part.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                            foreach (var smr in skinned)
-                            {
-                                if (!smr.enabled)
-                                {
-                                    smr.enabled = true;
-                                }
-                            }
-                        }
-
-                        refreshed++;
-                    }
-                    catch { }
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    public static class NativeAstronautUI
-    {
-        private static CrewModule.Seat pendingSeat;
-        private static Action pendingRedraw;
-        private static HashSet<string> persistentEvaDutyNames = new HashSet<string>();
-
-        internal static Dictionary<string, double> savedInternalFuel = new Dictionary<string, double>();
-        internal static double? pendingFuelOverride = null;
-
-        public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat)
-        {
-            ShowMenu(seat, redrawSeat, CloseMode.Current, 0);
-        }
-
-        private static void RefreshPersistentEvaDutyNames()
-        {
-            try
-            {
-                if (SavingCache.main == null) return;
-                WorldSave save = SavingCache.main.LoadWorldPersistent(
-                    MsgDrawer.main, needsRocketsAndBranches: false, eraseCache: false);
-                if (save?.astronauts?.eva == null) return;
-
-                persistentEvaDutyNames.Clear();
-                foreach (WorldSave.Astronauts.EVA eva in save.astronauts.eva)
-                    if (eva != null && !string.IsNullOrEmpty(eva.astronautName))
-                        persistentEvaDutyNames.Add(eva.astronautName);
-            }
-            catch { }
-        }
-
-        private static HashSet<string> CollectOnDutyAstronautNames()
-        {
-            HashSet<string> names = new HashSet<string>(persistentEvaDutyNames);
-            try
-            {
-                AstronautUnlockerMod.EnsureAllStateLists();
-                foreach (string name in AstronautState.main.crew_Build)
-                    if (!string.IsNullOrEmpty(name)) names.Add(name);
-                foreach (WorldSave.Astronauts.Crew_World crew in AstronautState.main.state.crew_World)
-                    if (crew != null && !string.IsNullOrEmpty(crew.astronautName)) names.Add(crew.astronautName);
-                if (GameManager.main == null)
-                {
-                    foreach (WorldSave.Astronauts.EVA evaSave in AstronautState.main.state.eva)
-                        if (evaSave != null && !string.IsNullOrEmpty(evaSave.astronautName)) names.Add(evaSave.astronautName);
-                }
-
-                foreach (Astronaut_EVA eva in UnityEngine.Object.FindObjectsOfType<Astronaut_EVA>(true))
-                    if (eva != null && eva.astronaut != null && !string.IsNullOrEmpty(eva.astronaut.astronautName))
-                        names.Add(eva.astronaut.astronautName);
-                if (AstronautManager.main?.eva != null)
-                {
-                    foreach (Astronaut_EVA eva in AstronautManager.main.eva)
-                        if (eva != null && eva.astronaut != null && !string.IsNullOrEmpty(eva.astronaut.astronautName))
-                            names.Add(eva.astronaut.astronautName);
-                }
-
-                foreach (CrewModule crew in UnityEngine.Object.FindObjectsOfType<CrewModule>(true))
-                {
-                    if (crew?.seats == null) continue;
-                    foreach (CrewModule.Seat seat in crew.seats)
-                        if (seat?.astronaut != null && !string.IsNullOrEmpty(seat.astronaut.Value))
-                            names.Add(seat.astronaut.Value);
-                }
-            }
-            catch { }
-            return names;
-        }
-
-        private static void SynchronizeActiveEVAState()
-        {
-            AstronautUnlockerMod.EnsureAllStateLists();
-        }
-
-        private static bool IsAstronautOnDuty(string astronautName)
-        {
-            return !string.IsNullOrEmpty(astronautName) &&
-                CollectOnDutyAstronautNames().Contains(astronautName);
-        }
-
-        public static void ShowMenu(CrewModule.Seat seat, Action redrawSeat, CloseMode closeMode, int page = 0)
-        {
-            pendingSeat = seat;
-            pendingRedraw = redrawSeat;
-
-            if (AstronautState.main == null || AstronautState.main.state == null)
-            {
-                Menu.read.Open(() => "AstronautState not available");
-                return;
-            }
-
-            SynchronizeActiveEVAState();
-            RefreshPersistentEvaDutyNames();
-            List<WorldSave.Astronauts.Data> astronauts = AstronautState.main.state.astronauts;
-            bool assignMode = seat != null;
-            const int perPage = 8;
-            List<WorldSave.Astronauts.Data> visible = astronauts == null
-                ? new List<WorldSave.Astronauts.Data>()
-                : astronauts.Where(astro =>
-                {
-                    if (!assignMode) return true;
-                    string name = astro.astronautName;
-                    return astro.alive && SafeGetAstronautState(name) == AstronautState.State.Available &&
-                        !IsAstronautOnDuty(name);
-                }).OrderBy(astro => (int)SafeGetAstronautState(astro.astronautName))
-                  .ThenBy(astro => astro.astronautName).ToList();
-
-            int totalPages = Mathf.Max(1, Mathf.CeilToInt(visible.Count / (float)perPage));
-            page = Mathf.Clamp(page, 0, totalPages - 1);
-            List<MenuElement> elements = new List<MenuElement>();
-            SizeSyncerBuilder.Carrier carrier;
-            elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
-
-            if (astronauts == null || astronauts.Count == 0)
-            {
-                elements.Add(TextBuilder.CreateText(() =>
-                    assignMode ? "No astronauts available.\nCreate one to assign to this seat."
-                               : "No astronauts yet."));
-            }
-
-            foreach (WorldSave.Astronauts.Data astro in visible.Skip(page * perPage).Take(perPage))
-            {
-                string capturedName = astro.astronautName;
-                AstronautState.State state = SafeGetAstronautState(capturedName);
-                string statusText = AstronautState.main.GetAstronautStateText(state, assignMode);
-                if (assignMode)
-                {
-                    elements.Add(ButtonBuilder.CreateButton(carrier,
-                        () => capturedName + " — " + statusText,
-                        () => AssignToSeat(capturedName),
-                        CloseMode.Current));
-                }
-                else
-                {
-                    elements.Add(ButtonBuilder.CreateButton(carrier,
-                        () => capturedName + " — " + statusText,
-                        () => OpenAstronautActions(capturedName),
-                        CloseMode.None));
-                }
-            }
-
-            if (assignMode && visible.Count == 0)
-            {
-                if (astronauts != null && astronauts.Count > 0)
-                    elements.Add(TextBuilder.CreateText(() => "No astronauts available for assignment."));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Create New Astronaut",
-                    () => OpenCreateDialog(true),
-                    CloseMode.Current));
-            }
-
-            if (totalPages > 1)
-            {
-                if (page > 0)
-                {
-                    int previousPage = page - 1;
-                    elements.Add(ButtonBuilder.CreateButton(carrier,
-                        () => "← Previous Page (" + (page + 1) + "/" + totalPages + ")",
-                        () => ShowMenu(seat, redrawSeat, CloseMode.Current, previousPage),
-                        CloseMode.Current));
-                }
-                if (page < totalPages - 1)
-                {
-                    int nextPage = page + 1;
-                    elements.Add(ButtonBuilder.CreateButton(carrier,
-                        () => "Next Page (" + (page + 1) + "/" + totalPages + ") →",
-                        () => ShowMenu(seat, redrawSeat, CloseMode.Current, nextPage),
-                        CloseMode.Current));
-                }
-            }
-
-            elements.Add(ElementGenerator.VerticalSpace(20));
-            if (!assignMode)
-            {
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Create New Astronaut",
-                    () => OpenCreateDialog(false),
-                    CloseMode.Current));
-            }
-            elements.Add(ButtonBuilder.CreateButton(carrier,
-                () => "Close",
-                () => { },
-                CloseMode.Current));
-
-            MenuGenerator.OpenMenu(CancelButton.Close, closeMode, elements.ToArray());
-        }
-
-        private static void AssignToSeat(string name)
-        {
-            try
-            {
-                if (pendingSeat != null)
-                {
-                    if (IsAstronautOnDuty(name))
-                    {
-                        Menu.read.Open(() => name + " is already assigned to a mission.");
-                        return;
-                    }
-                    pendingSeat.Board(name, 1.0, float.NegativeInfinity);
-                    pendingRedraw?.Invoke();
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        public static void OpenCreateDialog(bool reopenAssignMenu)
-        {
-            try
-            {
-                Menu.textInput.Open(
-                    "Cancel", "Create",
-                    delegate(string[] input)
-                    {
-                        string name = input.Length > 0 ? input[0] : "";
-                        if (!string.IsNullOrWhiteSpace(name))
-                        {
-                            AstronautState.main.CreateAstronaut(name);
-                            AstronautUnlockerMod.PersistAstronautStateToCache();
-                            if (reopenAssignMenu && pendingSeat != null)
-                            {
-                                ShowMenu(pendingSeat, pendingRedraw);
-                            }
-                        }
-                    },
-                    CloseMode.Current,
-                    TextInputMenu.Element("Astronaut name", ""));
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        private static void OpenAstronautActions(string name)
-        {
-            try
-            {
-                List<MenuElement> elements = new List<MenuElement>();
-                SizeSyncerBuilder.Carrier carrier;
-                elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
-                elements.Add(TextBuilder.CreateText(() => name));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Customize Flag",
-                    () => FlagCustomization.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
-                    CloseMode.Current));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Discharge",
-                    () => AskFire(name),
-                    CloseMode.Current));
-                elements.Add(ButtonBuilder.CreateButton(carrier,
-                    () => "Back",
-                    () => ShowMenu(null, null),
-                    CloseMode.Current));
-                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
-            }
-            catch { }
-        }
-
-        private static void AskFire(string name)
-        {
-            try
-            {
-                AstronautState.State state = SafeGetAstronautState(name);
-                if (state == AstronautState.State.CrewBuild ||
-                    state == AstronautState.State.CrewWorld ||
-                    state == AstronautState.State.EVA)
-                {
-                    MenuGenerator.OpenConfirmation(
-                        CloseMode.Stack,
-                        () => "Cannot discharge " + name + " while on duty. Remove from seat/EVA first.",
-                        () => "OK",
-                        delegate { });
-                    return;
-                }
-
-                MenuGenerator.OpenConfirmation(
-                    CloseMode.Stack,
-                    () => "Discharge " + name + "?",
-                    () => "Discharge",
-                    delegate
-                    {
-                        if (AstronautState.main.crew_Build != null)
-                            AstronautState.main.crew_Build.RemoveAll(n => n == name);
-                        if (AstronautState.main.state?.crew_World != null)
-                            AstronautState.main.state.crew_World.RemoveAll(c => c.astronautName == name);
-                        if (AstronautState.main.state?.eva != null)
-                            AstronautState.main.state.eva.RemoveAll(e => e.astronautName == name);
-                        AstronautState.main.FireAstronaut(name);
-
-                        AstronautUnlockerMod.PersistAstronautStateToCache();
-
-                        UpdateDriver.ScheduleMenuRefresh();
-                    });
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        public static AstronautState.State SafeGetAstronautState(string astronautName)
-        {
-            try
-            {
-                AstronautUnlockerMod.EnsureAllStateLists();
-                return AstronautState.main.GetAstronautState(astronautName);
-            }
-            catch (Exception e)
-            {
-                
-                var data = AstronautState.main?.state?.astronauts?
-                    .FirstOrDefault(a => a.astronautName == astronautName);
-                if (data != null && !data.alive)
-                    return AstronautState.State.Deceased;
-                return AstronautState.State.Available;
-            }
-        }
-
-        public static void DisableIconCamera(Camera cam)
-        {
-            if (cam == null) return;
-            cam.enabled = false;
-            cam.cullingMask = 0;
-            cam.clearFlags = CameraClearFlags.Nothing;
-            cam.targetTexture = null;
-            cam.forceIntoRenderTexture = false;
-            cam.transform.position = new Vector3(0, 0, -10000f);
-            cam.rect = new Rect(0f, 0f, 0f, 0f);
-            cam.depth = -100f;
-        }
-
-        public static bool IsIconCameraDisabled(Camera cam)
-        {
-            return cam != null && !cam.enabled && cam.cullingMask == 0 &&
-                   cam.clearFlags == CameraClearFlags.Nothing &&
-                   cam.rect == new Rect(0f, 0f, 0f, 0f) &&
-                   cam.depth == -100f;
-        }
-    }
-
-    [HarmonyPatch(typeof(PartIconCreator), "Awake")]
-    public class Patch_PartIconCreator_Awake
-    {
-        static void Postfix(PartIconCreator __instance)
-        {
-            try
-            {
-                Camera cam = __instance.GetComponent<Camera>();
-                if (cam != null)
-                {
-                    NativeAstronautUI.DisableIconCamera(cam);
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(PartIconCreator), "Start")]
-    public class Patch_PartIconCreator_Start
-    {
-        static void Postfix(PartIconCreator __instance)
-        {
-            try
-            {
-                Camera cam = __instance.GetComponent<Camera>();
-                if (cam != null && !NativeAstronautUI.IsIconCameraDisabled(cam))
-                {
-                    NativeAstronautUI.DisableIconCamera(cam);
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(PartIconCreator), "Render")]
-    public class Patch_PartIconCreator_Render
-    {
-        static void Prefix(PartIconCreator __instance)
-        {
-            try
-            {
-                Camera cam = __instance.GetComponent<Camera>();
-                if (cam != null)
-                {
-                    cam.cullingMask = 1 << LayerMask.NameToLayer("Part Icon");
-                    cam.clearFlags = CameraClearFlags.SolidColor;
-                    cam.rect = new Rect(0f, 0f, 1f, 1f);
-                    cam.depth = 0f;
-                }
-            }
-            catch { }
-        }
-
-        static void Postfix(PartIconCreator __instance)
-        {
-            try
-            {
-                Camera cam = __instance.GetComponent<Camera>();
-                if (cam != null)
-                {
-                    NativeAstronautUI.DisableIconCamera(cam);
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(PartIconCreator), "Render")]
-    public class Patch_PartIconCreator_Render_FuelPipeSize
-    {
-        static void Prefix(Part[] createdParts, ref Rect rect, ref int width, ref int height)
-        {
-            try
-            {
-                if (createdParts == null || createdParts.Length == 0) return;
-                foreach (Part part in createdParts)
-                {
-                    if (part == null || !part.HasModule<FuelPipeModule>()) continue;
-
-                    string partNameLower = (part.name ?? "").ToLower();
-
-                    bool isCurved = false;
-                    if (partNameLower.Contains("corner") || partNameLower.Contains("curve") ||
-                        partNameLower.Contains("elbow") || partNameLower.Contains("turn") ||
-                        partNameLower.Contains("bend"))
-                    {
-                        isCurved = true;
-                    }
-                    else
-                    {
-                        PipeData[] pipeDatas = part.GetComponentsInChildren<PipeData>(includeInactive: true);
-                        if (pipeDatas != null && pipeDatas.Length > 0)
-                        {
-                            PipeData pd = pipeDatas[0];
-                            string tn = pd.GetType().Name;
-                            if (tn == "CurvePipe" || tn == "EdgePipe")
-                            {
-                                isCurved = true;
-                            }
-                            else if (pd.pipe != null && pd.pipe.points != null && pd.pipe.points.Count >= 3)
-                            {
-                                int pc = pd.pipe.points.Count;
-                                Vector2 first = pd.pipe.points[0].position;
-                                Vector2 last = pd.pipe.points[pc - 1].position;
-                                Vector2 dir = last - first;
-                                float dirSqrMag = dir.sqrMagnitude;
-                                if (dirSqrMag > 0.0001f)
-                                {
-                                    for (int j = 1; j < pc - 1; j++)
-                                    {
-                                        Vector2 mid = pd.pipe.points[j].position;
-                                        Vector2 toMid = mid - first;
-                                        float proj = Vector2.Dot(toMid, dir) / dirSqrMag;
-                                        Vector2 perp = toMid - dir * proj;
-                                        if (perp.sqrMagnitude / dirSqrMag > 0.01f)
-                                        {
-                                            isCurved = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    isCurved = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if (isCurved)
-                    {
-                        float shrink = 0.6f;
-                        Vector2 center = rect.center;
-                        Vector2 newSize = rect.size * shrink;
-                        rect = new Rect(center - newSize / 2f, newSize);
-                    }
-                    else
-                    {
-                        float shrink = 0.5f;
-                        Vector2 center = rect.center;
-                        Vector2 newSize = rect.size * shrink;
-                        rect = new Rect(center - newSize / 2f, newSize);
-                        width *= 2;
-                        height *= 2;
-                    }
-                    break;
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(EngineModule), "Start")]
-    public class Patch_EngineModule_Start
-    {
-        private static HashSet<string> loggedEngineErrors = new HashSet<string>();
-
-        static Exception Finalizer(Exception __exception, EngineModule __instance)
-        {
-            if (__exception != null)
-                {
-                    if (!loggedEngineErrors.Contains(__instance.name))
-                    {
-                        loggedEngineErrors.Add(__instance.name);
-                    }
-                    return null;
-            }
-            return null;
-        }
-    }
-
-    [HarmonyPatch(typeof(DetachModule), "Detach")]
-    public class Patch_DetachModule_Detach_Diag
-    {
-        static void Prefix(DetachModule __instance, UsePartData data)
-        {
-            try
-            {
-                bool cannotDetach = __instance.cannotDetachIfSurfaceCovered;
-                bool hasSepSurface = __instance.separationSurface != null;
-                int sepSurfaceCount = hasSepSurface && __instance.separationSurface.surfaces != null
-                    ? __instance.separationSurface.surfaces.Count : 0;
-
-                Rocket rocket = (Rocket)typeof(DetachModule)
-                    .GetProperty("Rocket", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                    ?.GetValue(__instance);
-
-                bool surfaceCovered = false;
-                if (cannotDetach && __instance.surfaceForCover != null)
-                {
-                    surfaceCovered = SurfaceData.IsSurfaceCovered(__instance.surfaceForCover);
-                }
-
-                int connectedJoints = 0;
-                if (rocket != null && rocket.jointsGroup != null)
-                {
-                    Part part = __instance.transform.GetComponentInParentTree<Part>();
-                    if (part != null)
-                    {
-                        connectedJoints = rocket.jointsGroup.GetConnectedJoints(part).Count;
-                    }
-                }
-    }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    public class Water_Astronaut : MonoBehaviour
-    {
-        public bool isInWater;
-    }
-
-    [HarmonyPatch(typeof(AstronautManager), "SpawnEVA")]
-    public class Patch_AstronautManager_SpawnEVA_Buoyancy
-    {
-        static void Postfix(Astronaut_EVA __result)
-        {
-            try
-            {
-                if (__result != null && __result.GetComponent<Water_Astronaut>() == null)
-                {
-                    __result.gameObject.AddComponent<Water_Astronaut>();
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Astronaut_EVA), "OnFixedUpdate")]
-    public class Patch_Astronaut_EVA_OnFixedUpdate_Buoyancy
-    {
-        static void Postfix(Astronaut_EVA __instance, Vector2 gravity)
-        {
-            try
-            {
-                if (!AstronautUnlockerMod.buoyancyPostfixLogged)
-                {
-                    AstronautUnlockerMod.buoyancyPostfixLogged = true;
-                }
-
-                Water_Astronaut water = __instance.GetComponent<Water_Astronaut>();
-                if (water == null) return;
-
-                WorldLocation wl = __instance.location;
-                if (wl == null) return;
-
-                Planet planet = wl.planet.Value;
-                if (planet == null || planet.data == null || !planet.data.hasWater)
-                {
-                    water.isInWater = false;
-                    return;
-                }
-
-                Double2 position = wl.position.Value;
-                double altitude = position.magnitude - planet.Radius;
-
-                if (altitude > 0.5) { water.isInWater = false; return; }
-
-                float astroRadius = 0.3f;
-                double waterDepth = -altitude;
-                float submergedRatio = Mathf.Clamp01((float)(waterDepth / (astroRadius * 2.0)) + 0.5f);
-                water.isInWater = submergedRatio > 0f;
-
-                if (submergedRatio <= 0f) return;
-
-                Rigidbody2D rb = __instance.rb2d;
-                if (rb == null) return;
-
-                float gravityMag = (float)gravity.magnitude;
-                float dt = Time.fixedDeltaTime;
-
-                Double2 globalVel = WorldView.ToGlobalVelocity(rb.linearVelocity);
-
-                Double2 upDir = position.normalized;
-
-                float buoyancyAccel = submergedRatio * gravityMag * 5.0f;
-                globalVel += upDir * buoyancyAccel;
-
-                if (submergedRatio > 0.3f)
-                {
-                    globalVel -= gravity * submergedRatio;
-                }
-
-                double speed = globalVel.magnitude;
-                if (speed > 0.01)
-                {
-                    double dragMag = Mathf.Pow((float)speed, 1.2f) * 2.0f * astroRadius * submergedRatio * dt;
-                    globalVel -= globalVel.normalized * dragMag;
-                }
-
-                rb.linearVelocity = WorldView.ToLocalVelocity(globalVel);
-
-                rb.angularVelocity *= Mathf.Pow(0.3f, dt * 2f);
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Astronaut_EVA), "CanTimewarp")]
-    public class Patch_Astronaut_EVA_CanTimewarp_Buoyancy
-    {
-        static void Postfix(Astronaut_EVA __instance, ref bool __result, ref bool isInWater)
-        {
-            try
-            {
-                Water_Astronaut water = __instance.GetComponent<Water_Astronaut>();
-                if (water != null && water.isInWater)
-                {
-                    isInWater = true;
-                    __result = false;
-                }
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(VariantRef), "GetPickTags")]
-    public class Patch_VariantRef_GetPickTags_FuelPipe
-    {
-        static void Postfix(VariantRef __instance, ref List<Variants.PickTag> __result)
-        {
-            try
-            {
-                if (__instance?.part == null || __result == null) return;
-                if (!__instance.part.HasModule<FuelPipeModule>()) return;
-                if (__result.Count > 0) return; // Already has tags
-
-                PickCategory[] categories = UnityEngine.Resources.FindObjectsOfTypeAll<PickCategory>();
-                if (categories.Length == 0)
-                {
-                    return;
-                }
-
-                foreach (var cat in categories)
-                {
-                    string name = "";
-                    try
-                    {
-                        if (cat.displayName != null && cat.displayName.Field != null)
-                            name = cat.displayName.Field.ToString();
-                    }
-                    catch { }
-
-                    if (name.Contains("Fuel") || name.Contains("Tank") ||
-                        name.Contains("fuel") || name.Contains("tank"))
-                    {
-                        __result.Add(new Variants.PickTag { tag = cat, priority = 50 });
-                        return;
-                    }
-                }
-
-                __result.Add(new Variants.PickTag { tag = categories[0], priority = 50 });
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(FuelPipeModule), "FindNeighbours")]
-    public class Patch_FuelPipeModule_FindNeighbours
-    {
-        static bool Prefix(FuelPipeModule __instance)
-        {
-            try
-            {
-                if (__instance.surface_In == null || __instance.surface_Out == null)
-                {
-                    
-                    return false;
-                }
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(DetachModule), "Detach")]
-    public class Patch_DetachModule_Detach
-    {
-        static bool Prefix(DetachModule __instance, UsePartData data)
-        {
-            try
-            {
-                if (__instance.separationSurface == null)
-                {
-                    
-                    return false;
-                }
-                if (__instance.separationSurface.surfaces == null || __instance.separationSurface.surfaces.Count == 0)
-                {
-                    
-                    return false;
-                }
-                var rocketProp = typeof(DetachModule).GetProperty("Rocket",
-                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-                object rocket = rocketProp?.GetValue(__instance);
-                if (rocket == null)
-                {
-                    
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-            return true;
-        }
-    }
-
-    public static class VariableListPatches
-    {
-        public static bool RegisterOnVariableChange_Prefix(object __instance, string variableName)
-        {
-            try
-            {
-                MethodInfo getVar = __instance.GetType().GetMethod("GetVariable",
-                    BindingFlags.Public | BindingFlags.Instance);
-                if (getVar == null) return true; // Can't check, let original run
-
-                object variable = getVar.Invoke(__instance, new object[] { variableName });
-                if (variable == null)
-                {
-                    return false;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-            return true;
-        }
-
-        public static Exception Composed_Float_GetResult_Finalizer(Exception __exception, ref float __result)
-        {
-            if (__exception != null)
-            {
-                __result = 0f;
-                return null;
-            }
-            return __exception;
-        }
-    }
-
-    [HarmonyPatch(typeof(TeleportMenu), "ConfirmTeleport")]
-    public class Patch_TeleportMenu_ConfirmTeleport
-    {
-        static bool Prefix(TeleportMenu __instance)
-        {
-            try
-            {
-                Player value = PlayerController.main.player.Value;
-                if (value is Astronaut_EVA eva)
-                {
-                    var tr = Traverse.Create(__instance);
-                    Planet selectedPlanet = tr.Field("selectedPlanet").GetValue<Planet>();
-                    int mode = tr.Field("mode").GetValue<int>();
-                    float longitude = tr.Field("longitude").GetValue<float>();
-                    float height = tr.Field("height").GetValue<float>();
-                    bool prograde = tr.Field("prograde").GetValue<bool>();
-
-                    if (selectedPlanet == null)
-                    {
-                        return false;
-                    }
-
-                    longitude = Mathf.Clamp((longitude + 360f) % 360f, 0f, 360f);
-
-                    Location targetLocation;
-                    bool rotate;
-
-                    if (mode == 0) // Surface
-                    {
-                        double angleRad = (double)((0f - longitude + 90f) * (Mathf.PI / 180f));
-                        double terrainHeight = selectedPlanet.GetTerrainHeightAtAngle(angleRad, clampToWater: true);
-                        double radius = selectedPlanet.Radius + terrainHeight + 1.0 + (double)height;
-                        targetLocation = new Location(
-                            WorldTime.main.worldTime,
-                            selectedPlanet,
-                            new Double2(Math.Cos(angleRad) * radius, Math.Sin(angleRad) * radius),
-                            Double2.zero);
-                        rotate = true;
-                    }
-                    else // Orbit
-                    {
-                        double orbitRadius = selectedPlanet.Radius + (double)(height * 1000f);
-                        double orbitalVel = Math.Sqrt(selectedPlanet.mass / orbitRadius) + 0.0001;
-                        Double2 pos = new Double2(orbitRadius, 0.0);
-                        Double2 vel = new Double2(0.0, 0.0 - orbitalVel);
-                        float angleOffset = (0f - longitude + 90f) * (Mathf.PI / 180f);
-                        pos = pos.Rotate(angleOffset);
-                        vel = vel.Rotate(angleOffset);
-                        if (!prograde) vel *= -1.0;
-                        targetLocation = new Location(WorldTime.main.worldTime, selectedPlanet, pos, vel);
-                        rotate = false;
-                    }
-
-                    // The astronaut is already the active player when this menu is opened.
-                    // Do not set player.Value to null here: an exception during teleport used to
-                    // leave the controller with no active player and triggered the "No control" message.
-                    eva.physics.PhysicsMode = false;
-                    eva.physics.SetLocationAndState(targetLocation, physicsMode: false);
-                    eva.physics.PhysicsMode = true;
-
-                    Map.view.SetViewSmooth(new MapView.View(
-                        targetLocation.planet.mapPlanet,
-                        targetLocation.position,
-                        (double)Map.view.view.distance * 0.8));
-
-                    eva.physics.SetLocationAndState(targetLocation, physicsMode: true);
-
-                    if (rotate)
-                    {
-                        float targetAngle = Astronaut_EVA.GetTargetAngle(targetLocation);
-                        eva.rb2d.rotation = targetAngle;
-                        eva.rb2d.transform.rotation = Quaternion.Euler(0f, 0f, targetAngle);
-                        eva.rb2d.angularVelocity = 0f;
-                    }
-
-                    EVAControlRecovery.Attach(eva);
-                    ScreenManager.main.CloseStack();
-                    return false; // Skip original Rocket-only logic
-                }
-                return true; // Not an astronaut, let original run
-            }
-            catch (Exception e)
-            {
-                
-                return true; // Fall back to original on error
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(FlightInfoDrawer), "Update")]
-    public class Patch_FlightInfoDrawer_HideForEVA
-    {
-        static bool Prefix(FlightInfoDrawer __instance)
-        {
-            try
-            {
-                bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
-                if (!evaSelected) return true;
-
-                // Prevent the native non-rocket branch from writing 0.00t / 0t / 0.00,
-                // then keep the entire rocket-information holder invisible for EVA.
-                if (__instance != null && __instance.menuHolder != null)
-                    __instance.menuHolder.SetActive(false);
-                if (__instance != null && __instance.timewarpText != null)
-                    __instance.timewarpText.Text = WorldTime.main.timewarpSpeed + "x";
-                return false;
-            }
-            catch
-            {
-                return true;
-            }
-        }
-    }
-
-    // Hide only FlightInfoDrawer's rocket stats holder during EVA.
-    public static class EVAStatsPanelHider
-    {
-
-        public static void LateUpdate()
-        {
-            bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
-            if (!evaSelected) return;
-
-            FlightInfoDrawer[] drawers = UnityEngine.Object.FindObjectsOfType<FlightInfoDrawer>(true);
-            foreach (FlightInfoDrawer drawer in drawers)
-            {
-                if (drawer == null || drawer.menuHolder == null) continue;
-                if (drawer.menuHolder.activeSelf) drawer.menuHolder.SetActive(false);
-            }
-        }
-    }
-
-    public static class TeleportButtonHelper
-    {
-        private static ModGUIButton teleportButton;
-        private static GameObject teleportBtnHolder;
-
-        public static void Update()
-        {
-            try
-            {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
-
-                bool cheatsAllowed = false;
-                try
-                {
-                    cheatsAllowed = Base.worldBase != null && Base.worldBase.AllowsCheats;
-                }
-                catch { }
-
-                if (isEVA && cheatsAllowed && teleportButton == null)
-                {
-                    teleportBtnHolder = ModGUIBuilder.CreateHolder(
-                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_TeleportBtn");
-                    teleportButton = ModGUIBuilder.CreateButton(
-                        teleportBtnHolder.transform, 150, 50,
-                        450, -200,
-                        () =>
-                        {
-                            try
-                            {
-                                if (TeleportMenu.main != null)
-                                {
-                                    TeleportMenu.main.OpenFromCheats();
-                                }
-                                else
-                                {
-                                    
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                
-                            }
-                        },
-                        "Teleport");
-                }
-                else if ((!isEVA || !cheatsAllowed) && teleportButton != null)
-                {
-                    if (teleportBtnHolder != null)
-                        UnityEngine.Object.Destroy(teleportBtnHolder);
-                    teleportButton = null;
-                    teleportBtnHolder = null;
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    public static class AstronautDashboardHelper
-    {
-        private static SFS.UI.ModGUI.Label dashboardLabel;
-        private static GameObject dashboardHolder;
-        private static float updateTimer;
-
-        public static void Update()
-        {
-            try
-            {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
-
-                if (isEVA && dashboardLabel == null)
-                {
-                    dashboardHolder = ModGUIBuilder.CreateHolder(
-                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_Dashboard");
-                    dashboardLabel = ModGUIBuilder.CreateLabel(
-                        dashboardHolder.transform, 280, 80,
-                        -450, 300,
-                        "");
-                    dashboardLabel.Color = new Color(1f, 1f, 1f, 0.9f);
-                    dashboardLabel.FontSize = 14;
-                }
-                else if (!isEVA && dashboardLabel != null)
-                {
-                    if (dashboardHolder != null)
-                        UnityEngine.Object.Destroy(dashboardHolder);
-                    dashboardLabel = null;
-                    dashboardHolder = null;
-                }
-
-                if (isEVA && dashboardLabel != null &&
-                    PlayerController.main?.player?.Value is Astronaut_EVA eva)
-                {
-                    updateTimer += Time.deltaTime;
-                    if (updateTimer >= 0.01f) // Update 100x per second (10ms)
-                    {
-                        updateTimer = 0f;
-                        UpdateTelemetry(eva, dashboardLabel);
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-
-        private static void UpdateTelemetry(Astronaut_EVA eva, SFS.UI.ModGUI.Label label)
-        {
-            try
-            {
-                Double2 globalVel = WorldView.ToGlobalVelocity(eva.rb2d.linearVelocity);
-                double speed = globalVel.magnitude;
-
-                double altitude = 0.0;
-                if (eva.location != null && eva.location.planet.Value != null)
-                {
-                    altitude = eva.location.position.Value.magnitude - eva.location.planet.Value.Radius;
-                }
-
-                double fuel = eva.resources?.fuelPercent?.Value ?? 0.0;
-
-                string altStr = altitude >= 1000.0
-                    ? (altitude / 1000.0).ToString("F2") + " km"
-                    : altitude.ToString("F1") + " m";
-
-                label.Text = $"Speed: {speed:F1} m/s\n" +
-                             $"Altitude: {altStr}\n" +
-                             $"Fuel: {fuel * 100:F0}%";
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    // ===== EVA 注入 Harmony 补丁 =====
-
-    // 在模组控制部件的右键菜单添加"启用 EVA"开关
-    [HarmonyPatch(typeof(Part), "DrawPartStats")]
-    public class Patch_Part_DrawPartStats_EVA
-    {
-        static void Postfix(Part __instance, Part[] allParts, StatsMenu drawer, PartDrawSettings settings)
-        {
-            try
-            {
-                // 仅在建造/世界模式显示（非部件选择界面）
-                if (!settings.build && !settings.game) return;
-
-                // 需为控制部件
-                if (!__instance.HasModule<ControlModule>()) return;
-
-                bool hasNativeCrew = AstronautUnlockerMod.HasNativeCrewModule(__instance);
-
-                string partName = __instance.name;
-                Part capturedPart = __instance;
-
-                // 原生 CrewModule 已自带座位，只为其他控制部件显示 Enable EVA。
-                if (!hasNativeCrew)
-                {
-                    drawer.DrawToggle(-500,
-                    () => "Enable EVA",
-                    () =>
-                    {
-                        try
-                        {
-                            bool currentEnabled = AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                                                   AstronautUnlockerMod.evaConfig[partName];
-                            bool newEnabled = !currentEnabled;
-                            AstronautUnlockerMod.evaConfig[partName] = newEnabled;
-                            AstronautUnlockerMod.SaveEvaConfig();
-
-                            if (newEnabled)
-                            {
-                                AstronautUnlockerMod.InjectCrewModule(capturedPart);
-                            }
-                            else
-                            {
-                                AstronautUnlockerMod.RemoveCrewModule(capturedPart);
-                            }
-
-                            // 清模块缓存使 HasModule<CrewModule> 返回正确结果
-                            AstronautUnlockerMod.ClearModuleCache(capturedPart);
-
-                            // 不关闭/重开菜单，避免菜单箭头因坐标问题"瞬移"。
-                            // getValue 回调会在下次重绘时自动反映新状态。
-                        }
-                        catch (Exception e)
-                        {
-                            
-                        }
-                    },
-                    () => AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                           AstronautUnlockerMod.evaConfig[partName],
-                    null, null);
-                }
-
-                // 仅模组适配部件可配置容量；原生座椅保留其真实单座位。
-                if (settings.build && !hasNativeCrew)
-                {
-                    drawer.DrawButton(-501,
-                        () => "Crew Capacity",
-                        () => AstronautUnlockerMod.GetCrewCapacity(partName) + " / 5",
-                        () => AstronautUnlockerMod.OpenCrewCapacityMenu(capturedPart),
-                        () => true,
-                        null, null);
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    // 启用 EVA 的部件初始化时自动注入 CrewModule
-    [HarmonyPatch(typeof(Part), "InitializePart")]
-    public class Patch_Part_InitializePart_EVA
-    {
-        static void Postfix(Part __instance)
-        {
-            try
-            {
-                // 只有模组注入的载入舱支持可变容量；原生座椅保留真实单座位行为。
-                if (__instance.HasModule<CrewModule>())
-                {
-                    if (AstronautUnlockerMod.injectedPartIds.Contains(__instance.GetInstanceID()))
-                        UpdateDriver.ScheduleCrewCapacityApply(__instance, refreshMenu: false);
-                    return;
-                }
-                if (!__instance.HasModule<ControlModule>()) return;
-
-                string partName = __instance.name;
-                if (AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                    AstronautUnlockerMod.evaConfig[partName])
-                {
-                    AstronautUnlockerMod.InjectCrewModule(__instance);
-                    AstronautUnlockerMod.ClearModuleCache(__instance);
-                    UpdateDriver.ScheduleCrewCapacityApply(__instance, refreshMenu: false);
-                }
-            }
-            catch (Exception e)
-            {
-                
-            }
-        }
-    }
-
-    // 加宽大型模组舱体的 EVA 登舱距离（20 → 50）
-    [HarmonyPatch(typeof(CrewModule), "EVA_Board")]
-    public class Patch_EVA_Board_Distance
-    {
-        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> codes)
-        {
-            foreach (var c in codes)
-            {
-                if (c.opcode == OpCodes.Ldc_R4 && (float)c.operand == 400f)
-                    c.operand = 2500f;
-                yield return c;
-            }
-        }
-    }
-
-    // 发射前把注入部件座椅上的乘员名存入 savedAstronauts。
-    // 注入的 CrewModule 不在部件 JSON 中，PartSave.CreateSaves() 不会序列化座椅乘员，
-    // 需手动保存并在世界场景重注入时恢复。
-    [HarmonyPatch(typeof(BuildManager), "Launch")]
-    public class Patch_BuildManager_Launch_SaveAstronauts
-    {
-        static void Prefix()
-        {
-            try
-            {
-                if (BuildManager.main == null) return;
-
-                // 获取建造网格中的所有部件
-                PartHolder partsHolder = BuildManager.main.buildGrid.activeGrid.partsHolder;
-                if (partsHolder == null || partsHolder.parts == null) return;
-
-                foreach (Part part in partsHolder.parts)
-                {
-                    int partId = part.GetInstanceID();
-                    if (!AstronautUnlockerMod.injectedPartIds.Contains(partId)) continue;
-
-                    // 注入部件——保存其乘员名
-                    CrewModule crew = part.GetComponentInChildren<CrewModule>(true);
-                    if (crew == null || crew.seats == null) continue;
-
-                    var savedList = new List<string>();
-                    foreach (var seat in crew.seats)
-                    {
-                        if (seat.HasAstronaut)
-                        {
-                            savedList.Add(seat.astronaut.Value);
-                        }
-                    }
-
-                    if (savedList.Count > 0)
-                    {
-                        AstronautUnlockerMod.savedAstronauts[part.name] = savedList;
-                        
-                    }
-                }
-
-                // 持久化到 JSON，场景重载后仍保留
-                AstronautUnlockerMod.SaveEvaConfig();
-            }
-            catch (Exception e)
-            {
-                
+                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1294", e);
             }
         }
     }
 }
-
