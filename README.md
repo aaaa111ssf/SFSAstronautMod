@@ -65,7 +65,48 @@
 ---
 
 ## 更新日志 / Changelog
-  
+
+### 【v3.9.1 更新 / v3.9.1 Update】
+
+本次更新重写了注入型乘员舱的数据存储方式，解决了"发射后火箭消失"、"回退后失去控制"与"重启后配置丢失"这三个长期问题的共同根因。
+**This release rewrites how injected crew capsules store their data, fixing the common root cause of the "rocket disappears after launch", "control lost after revert" and "config lost after restart" bugs.**
+
+- **修复：重启 SFS 后自定义太空舱配置丢失**
+  每个被模组适配的部件实例会把自身的"Crew Capacity / 每个座位的宇航员"写入该部件原生的文本变量（`AstronautMod_Cap`、`AstronautMod_Seat0…`）。这些变量随 `PartSave.TEXT_VARIABLES` 走原生存档管线，因此会随蓝图、火箭存档、世界存档、快速存档一起落盘，不再依赖全局 JSON 或 InstanceID 缓存。
+  **Fix: per-part state (capacity + astronaut per seat) is now written into the part's own native text variables, so it travels inside blueprints, rocket saves, and world saves through the vanilla pipeline.**
+- **新增（可选依赖）：Custom Save Data 集成**
+  若安装了 [Custom-Save-Data-SFS](https://github.com/AstroTheRabbit/Custom-Save-Data-SFS)（`CustomSaveData.dll`），模组还会把乘员配置额外写入蓝图 customData 与世界存档 customData 作为冗余备份；未安装时该桥接自动禁用，模组照常工作。
+  **New (optional dependency): when Custom Save Data is installed, crew data is also mirrored into blueprint and world save custom data. Without it, the bridge disables itself.**
+- **修复：发射后火箭消失、地图视图锁死在太阳**
+  过去发射时乘员名要通过脆弱的"部件名 → 宇航员名"全局缓存重建；一旦某个座舱恢复失败，`hasControl` 就为假，`RocketManager.SpawnBlueprint` 找不到可控火箭，玩家目标为空、摄像机停在原点（太阳）。现在乘员随部件恢复，同时在 `SpawnBlueprint` 之后强制校正控制权、玩家目标与地图视图目标。
+  **Fix: after a blueprint is spawned the mod now guarantees a controllable rocket exists, assigns the player target and re-points the map view, so neither the rocket nor the camera can get stranded.**
+- **修复："恢复到发射状态" / 回退 30 秒 / 3 分钟后宇航员消失并失去控制（原 Bug 2）**
+  新增"世界重建窗口"：载入存档、回退与重新生成火箭期间，旧座舱的销毁不会把宇航员判定为阵亡，新座椅的初始化也不会清空已经记录的乘员。乘员通过部件变量恢复，控制权随之恢复。
+  **Fix: a world-rebuild window prevents old capsules from killing their crew and new seats from wiping restored occupants during loads and reverts.**
+- **修复：已有 action 的自定义太空舱（如 Vanilla Redstone 的 Mercury 舱）无法进入宇航员菜单（原 Bug 4）**
+  在 World 场景中，若太空舱自带 action（点击只触发该 action），请 **按住 Alt 再点击该舱**（默认绑定，可在游戏设置 → Keybindings 中自定义为任意 修饰键 + 键/鼠标），即可直接打开乘员菜单；部件统计菜单中另提供 **Astronaut Menu** 直达按钮。
+  注意：**"Enable EVA" 仍然只提供给带 `ControlModule` 的部件** —— 这条限制是为了避免把宇航员塞进邮箱、配重块这类非载人部件，不能放开。
+  **Fix: in world, hold Alt and click a capsule with its own action to open the crew menu directly (default binding; rebindable in Settings → Keybindings to any modifier + key/mouse); an "Astronaut Menu" button is also added to the part stats menu. Note: the "Enable EVA" toggle still requires a `ControlModule` — that requirement exists to keep astronauts out of non-crew parts such as mailboxes.**
+- **新增：模组配置接入游戏自带设置系统 / Mod config now lives in the game's settings**
+  模组的配置不再散落在 `Mods` 目录的 `config.txt`，而是走与游戏 `ModsSettings` / `KeybindingsPC` 同款的 `SettingsBase` 机制，持久化到游戏设置文件夹下的 `AstronautModSettings.json`。乘员菜单的打开绑定作为一行 **"Open Astronaut Menu"** 注入到游戏 **设置 → Keybindings** 列表，默认 `Alt + 左键`，点击该行即可重新捕获（支持 Alt / Shift / Ctrl + 键 或 鼠标键）。旧 `config.txt` 中的 `allowUncrewedControl` 会在首次启动时自动迁移并删除。
+  **New: mod config uses the game's own `SettingsBase` system (file: `AstronautModSettings.json` in the settings folder). The crew-menu open binding appears as an "Open Astronaut Menu" row in Settings → Keybindings, defaulting to Alt + LMB and fully rebindable (Alt/Shift/Ctrl + key or mouse). The legacy `config.txt` `allowUncrewedControl` is migrated once and then removed.**
+- **修复：在 Hub 新建的宇航员进入蓝图（建造场景）后找不到**
+  根因是 `WorldSave.Save()` 中的 `if (!DevSettings.DisableAstronauts)`：PC 版该开关恒为 `true` 且是返回常量的属性（很可能被 JIT 内联），导致所有走 `SavingCache` 的存档**从不**写入 `Astronauts.txt`，新建的宇航员只活在内存里，切场景重载即丢失。
+  现在名册会在创建/解雇时同步直写 `Astronauts.txt`，并在每次 `WorldSave.Save` 后无条件补写；同时 Hub 每 10 秒的自动保存会先同步最新名册，避免用旧引用覆盖；场景重载时还会把内存中缺失的宇航员补回（已解雇的除外）。
+  **Fix: the astronaut roster is now written straight to `Astronauts.txt` on create/discharge and after every `WorldSave.Save`, the Hub's periodic save syncs the live roster before writing, and scene reloads merge back any in-memory astronauts missing from disk.**
+
+- **性能与清理 / Performance & cleanup**
+  移除了全局 `Debug.Log` 拦截补丁（不再对每条日志做 Harmony 前缀，也不隐藏数值型诊断日志）；删除了未使用的 `buoyancyPostfixLogged` / `persistentState` 字段与一段只计算局部变量、从不落地的"分离模块"诊断补丁。  每帧热路径改为缓存：图标相机引用、飞行信息面板数组、燃料管分类数组只扫描一次；EVA 仪表盘刷新频率可在游戏设置里自定义（默认 20Hz，对驾驶员等同实时，且比 100Hz 少 5 倍 UI 开销）。
+
+- **新增：更多可自定义的模组设置（游戏设置 → Keybindings 内的 "Astronaut Mod" 分区）**
+  在乘员菜单绑定之外，下列选项现在也放进游戏设置，可随时开关 / 调节并即时生效：
+  - **Allow control without crew**（无乘员也保留控制权）：开 / 关。
+  - **EVA telemetry dashboard**（EVA 遥测面板总开关）：开 / 关，关闭后不再显示速度 / 高度 / 氧气等面板。
+  - **Telemetry refresh rate**（遥测刷新频率）：在 5 / 10 / 20 / 30 / 60 Hz 之间点击循环，控制速度、高度、氧气等数值的更新频率。
+  这些设置同样持久化到 `AstronautModSettings.json`，不再需要手动改文件。
+  **New: more mod options are now in-game settings (the "Astronaut Mod" section inside Settings → Keybindings): Allow control without crew (on/off), EVA telemetry dashboard (on/off), and Telemetry refresh rate (cycles 5/10/20/30/60 Hz). All persist to `AstronautModSettings.json`.**
+  **Removed the global `Debug.Log` interceptor and a dead diagnostic patch; cached the icon-camera reference, the flight-info panel array and the fuel-pipe category array so they are no longer re-scanned every frame; the EVA dashboard now refreshes at 20 Hz instead of 100 Hz.**
+
 ### 【v3.9 更新 / v3.9 Update】  
 - 修复：外出执行 EVA 的宇航员不会再在任用菜单中被错误显示为可用人员 任用名单会同时检查持久 EVA 状态、世界中的 EVA 实体、飞行乘员与座位占用，避免同一宇航员被重复任用  
   **Fix: Astronauts on EVA are no longer incorrectly shown as available in the assignment menu. The roster checks persistent EVA state, live EVA entities, in-flight crew, and occupied seats to prevent duplicate assignment.**  

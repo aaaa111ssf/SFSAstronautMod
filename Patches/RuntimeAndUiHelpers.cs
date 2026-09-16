@@ -59,6 +59,17 @@ namespace AstronautUnlocker
             pickGridRefreshTimer = 0.1f;
         }
 
+        // 图标相机引用在场景内基本稳定 缓存一次 避免每帧 GetComponent 全场景查找
+        private static Camera iconCamera;
+        private static void DisableIconCameraIfNeeded()
+        {
+            if (PartIconCreator.main == null) return;
+            if (iconCamera == null || !iconCamera)
+                iconCamera = PartIconCreator.main.GetComponent<Camera>();
+            if (iconCamera != null && !NativeAstronautUI.IsIconCameraDisabled(iconCamera))
+                NativeAstronautUI.DisableIconCamera(iconCamera);
+        }
+
         private static void DoPickGridRefresh()
         {
             try
@@ -92,6 +103,9 @@ namespace AstronautUnlocker
 
         private void Update()
         {
+            // 依赖模组的加载顺序不保证 这里持续尝试直到订阅成功
+            CustomSaveBridge.Ensure();
+
             timer += Time.deltaTime;
             if (timer >= 0.5f)
             {
@@ -103,11 +117,7 @@ namespace AstronautUnlocker
 
             if (PartIconCreator.main != null)
             {
-                Camera iconCam = PartIconCreator.main.GetComponent<Camera>();
-                if (iconCam != null && !NativeAstronautUI.IsIconCameraDisabled(iconCam))
-                {
-                    NativeAstronautUI.DisableIconCamera(iconCam);
-                }
+                DisableIconCameraIfNeeded();
             }
 
             if (pendingMenuRefresh)
@@ -157,11 +167,7 @@ namespace AstronautUnlocker
             EVAStatsPanelHider.LateUpdate();
             if (PartIconCreator.main != null)
             {
-                Camera iconCam = PartIconCreator.main.GetComponent<Camera>();
-                if (iconCam != null && !NativeAstronautUI.IsIconCameraDisabled(iconCam))
-                {
-                    NativeAstronautUI.DisableIconCamera(iconCam);
-                }
+                DisableIconCameraIfNeeded();
             }
         }
 
@@ -500,6 +506,11 @@ namespace AstronautUnlocker
                             if (reopenAssignMenu && pendingSeat != null)
                             {
                                 ShowMenu(pendingSeat, pendingRedraw);
+                            }
+                            else
+                            {
+                                // 新建后刷新列表，让玩家立刻看到（并确认已写入存档）
+                                ShowMenu(null, null);
                             }
                         }
                     },

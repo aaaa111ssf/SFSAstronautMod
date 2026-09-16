@@ -11,6 +11,7 @@ using ModLoader.Helpers;
 using SFS;
 using SFS.Builds;
 using SFS.Career;
+using SFS.IO;
 using SFS.Input;
 using SFS.Parts;
 using SFS.Parts.Modules;
@@ -66,6 +67,13 @@ namespace AstronautUnlocker
                     return false;
                 }
 
+                if (__instance.state == null)
+                    __instance.state = new WorldSave.Astronauts();
+                if (__instance.state.astronauts == null)
+                    __instance.state.astronauts = new List<WorldSave.Astronauts.Data>();
+                if (__instance.state.crew_World == null)
+                    __instance.state.crew_World = new List<WorldSave.Astronauts.Crew_World>();
+
                 if (__instance.GetAstronautByName(astronautName) != null)
                 {
                     Menu.read.Open(() => Loc.main.Astronaut_Already_Exists);
@@ -80,12 +88,93 @@ namespace AstronautUnlocker
                     Traverse.Create(__instance).Method("Save").GetValue();
                 }
 
+                // 无论 selfManageSaving 是否为 true 都同步落盘一次：
+                // Hub 里新建的宇航员必须能带到建造/蓝图场景
+                AstronautUnlockerMod.DischargedAstronauts.Remove(astronautName);
+                AstronautUnlockerMod.SaveAstronautRosterToDisk();
+                AstronautUnlockerMod.PersistAstronautStateToCache();
+
                 return false; // 跳过原方法
             }
             catch (Exception e)
             {
                 
                 return true; // 出错时回退到原方法
+            }
+        }
+    }
+
+    // 解雇宇航员后同样需要立即落盘，否则重载场景时会"复活"
+    [HarmonyPatch(typeof(AstronautState), "FireAstronaut")]
+    public class Patch_AstronautState_FireAstronaut
+    {
+        static void Postfix(string astronautName)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(astronautName))
+                    AstronautUnlockerMod.DischargedAstronauts.Add(astronautName);
+
+                AstronautUnlockerMod.SaveAstronautRosterToDisk();
+                AstronautUnlockerMod.PersistAstronautStateToCache();
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("FireAstronaut persist", e);
+            }
+        }
+    }
+
+    // ============================================================
+    // Hub 会每 10 秒（以及退出时）用自己缓存的 WorldSave 覆盖持久化数据。
+    // 那份缓存里的 astronauts 可能是旧引用，会把刚创建的宇航员抹掉。
+    // 保存前把最新名册同步进去。
+    // ============================================================
+    [HarmonyPatch(typeof(HubManager), "UpdatePersistent")]
+    public class Patch_HubManager_UpdatePersistent
+    {
+        static void Prefix()
+        {
+            try
+            {
+                if (HubManager.main == null || AstronautState.main == null) return;
+                if (AstronautState.main.state == null) return;
+
+                FieldInfo field = typeof(HubManager).GetField("state",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                WorldSave hubSave = field?.GetValue(HubManager.main) as WorldSave;
+                if (hubSave == null) return;
+
+                hubSave.astronauts = AstronautState.main.state;
+
+                // SavingCache.SaveWorldPersistent 不一定会写 Astronauts.txt，这里补写
+                AstronautUnlockerMod.SaveAstronautRosterToDisk();
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("HubManager.UpdatePersistent sync", e);
+            }
+        }
+    }
+
+    // WorldSave.Save 里的 `if (!DevSettings.DisableAstronauts)` 在 PC 版恒为 true，
+    // 且该属性返回常量、很可能被 JIT 内联，导致对 get_DisableAstronauts 的 Harmony 补丁失效。
+    // 结果就是所有走 SavingCache 的存档都不会写 Astronauts.txt。这里无条件补写一次。
+    [HarmonyPatch(typeof(WorldSave), "Save")]
+    public class Patch_WorldSave_Save_WriteAstronauts
+    {
+        static void Postfix(IFolder path, WorldSave worldSave)
+        {
+            try
+            {
+                if (worldSave?.astronauts == null) return;
+                if (path == null) return;
+
+                WorldSave.Save_AstronautStates(path, worldSave.astronauts);
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("WorldSave.Save astronauts", e);
             }
         }
     }
@@ -104,6 +193,43 @@ namespace AstronautUnlocker
     // 判断依据 LoadSave 来自 LoadPersistentAndLaunch（正常进入）则保存死亡
     // 来自其他回退则复活本次任务死亡的乘员
     // ============================================================
+    /// <summary>
+    /// 世界被拆除并重建的时间窗口（发射 / 回退 / 读档）。
+    /// 这段时间内座舱的销毁与新座椅的初始化都不得判定乘员死亡或清空座椅，
+    /// 否则回退后乘员会消失、失去控制权（Bug 2）。
+    /// </summary>
+    public static class WorldRebuild
+    {
+        static bool active;
+        static float startTime;
+
+        public static bool Active
+        {
+            get
+            {
+                if (!active) return false;
+                // 兜底 若始终没等到 SpawnBlueprint 结束 超时自动收口
+                if (Time.unscaledTime - startTime > 30f)
+                {
+                    active = false;
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        public static void Begin()
+        {
+            active = true;
+            startTime = Time.unscaledTime;
+        }
+
+        public static void End()
+        {
+            active = false;
+        }
+    }
+
     [HarmonyPatch(typeof(GameManager), "LoadPersistentAndLaunch")]
     public class Patch_GameManager_LoadPersistentAndLaunch
     {
@@ -160,6 +286,9 @@ namespace AstronautUnlocker
         {
             try
             {
+                // 世界开始重建 期间不得把老座舱里的乘员判死或清空座椅
+                WorldRebuild.Begin();
+
                 bool markedPersistentEntry = Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry;
                 isPersistentEntry = markedPersistentEntry || forLaunch;
                 Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry = false;
@@ -360,7 +489,8 @@ namespace AstronautUnlocker
                     }
                 }
                 isPersistentEntry = false;
-                isRevertLoad = false;
+                // isRevertLoad 保留到世界（重新）生成结束 供座椅恢复逻辑使用
+                // 由 Patch_RocketManager_SpawnBlueprint_EnsurePlayer 负责收尾
             }
             catch (Exception e)
             {
@@ -622,6 +752,19 @@ namespace AstronautUnlocker
                     tr.Method("AddSeatedAstronaut").GetValue();
                     return false;
                 }
+                else if (state == AstronautState.State.EVA)
+                {
+                    // 正在舱外活动的人员不得被当作座位乘员恢复
+                    astronautRef.Value = "";
+                    bool evaExternalSeat = tr.Field<bool>("externalSeat").Value;
+                    if (evaExternalSeat)
+                    {
+                        var evaResources = tr.Field("resources").GetValue<EVA_Resources>();
+                        if (evaResources != null)
+                            evaResources.fuelPercent.Value = -1.0;
+                    }
+                    return false;
+                }
                 else
                 {
                     
@@ -629,8 +772,22 @@ namespace AstronautUnlocker
                     // 保留座椅乘员不清空 但仅限本次任务死亡的乘员 任务前已死亡的不恢复
                     var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
                     bool deadBeforeLaunch = baseline != null && baseline.Contains(astronautName);
-                    if (Patch_GameManager_LoadSave.isRevertLoad && !deadBeforeLaunch)
+                    if (Patch_GameManager_LoadSave.isRevertLoad || WorldRebuild.Active)
                     {
+                        if (deadBeforeLaunch)
+                        {
+                            astronautRef.Value = "";
+                            bool externalSeat = tr.Field<bool>("externalSeat").Value;
+                            if (externalSeat)
+                            {
+                                var resources = tr.Field("resources").GetValue<EVA_Resources>();
+                                if (resources != null)
+                                    resources.fuelPercent.Value = -1.0;
+                            }
+                            return false;
+                        }
+
+                        // Bug 2: 重建/回退过程中不要抹掉座椅上的乘员（姓名会通过部件变量持久化）
                         AstronautState.main.AddCrew(astronautName);
                         tr.Method("AddSeatedAstronaut").GetValue();
                         
@@ -639,12 +796,12 @@ namespace AstronautUnlocker
 
                     
                     astronautRef.Value = "";
-                    bool externalSeat = tr.Field<bool>("externalSeat").Value;
-                    if (externalSeat)
+                    bool externalSeat2 = tr.Field<bool>("externalSeat").Value;
+                    if (externalSeat2)
                     {
-                        var resources = tr.Field("resources").GetValue<EVA_Resources>();
-                        if (resources != null)
-                            resources.fuelPercent.Value = -1.0;
+                        var resources2 = tr.Field("resources").GetValue<EVA_Resources>();
+                        if (resources2 != null)
+                            resources2.fuelPercent.Value = -1.0;
                     }
                     return false;
                 }
@@ -672,6 +829,10 @@ namespace AstronautUnlocker
 
                 if (string.IsNullOrEmpty(astronautName))
                     return false; // 无乘员则跳过
+
+                // 该部件是世界重建期间的旧对象 不要改动任何乘员状态
+                if (WorldRebuild.Active)
+                    return false;
 
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
@@ -810,6 +971,34 @@ namespace AstronautUnlocker
     {
         static HashSet<int> patchedParts = new HashSet<int>();
 
+        // Bug 4: 世界场景中按绑定键（默认 Alt + 左键）点击太空舱可直接打开乘员菜单。
+        // 绑定来自 ModSettings，可在游戏设置 → Keybindings 里自定义。
+        internal static bool IsCrewMenuBindingActive()
+        {
+            try
+            {
+                ModSettings.Data s = ModSettings.main?.settings;
+                if (s == null) return false;
+
+                bool modOk = s.crewMenuModifier switch
+                {
+                    1 => Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift),
+                    2 => Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl),
+                    3 => Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt),
+                    _ => true,
+                };
+
+                // 主键为左键时（默认）：UseParts 本身由左键触发，只需判定修饰键
+                if (s.crewMenuKey == KeyCode.Mouse0)
+                    return modOk;
+                return modOk && (Input.GetKey(s.crewMenuKey) || Input.GetKeyDown(s.crewMenuKey));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static void ClearPatchedParts()
         {
             patchedParts.Clear();
@@ -821,6 +1010,24 @@ namespace AstronautUnlocker
             {
                 if (regions == null || regions.Length == 0)
                     return true;
+
+                // Bug 4: 已自带 action 的太空舱点击只会触发 action 世界场景里永远打不开乘员菜单
+                // 这里提供绑定键（默认 Alt + 左键）+ 点击的强制入口（不触发原 action）
+                if (!fromStaging && IsCrewMenuBindingActive())
+                {
+                    bool opened = false;
+                    foreach (var region in regions)
+                    {
+                        Part part = region.Item1;
+                        if (part == null) continue;
+                        CrewModule[] crewModules = part.GetModules<CrewModule>();
+                        if (crewModules == null || crewModules.Length == 0) continue;
+                        crewModules[0].OpenPartMenu(canBoardWorld: true);
+                        opened = true;
+                    }
+                    if (opened)
+                        return false; // 跳过本次 action 触发
+                }
 
                 foreach (var region in regions)
                 {
@@ -1019,6 +1226,183 @@ namespace AstronautUnlocker
             {
                 
                 return true; // 出错时回退到原方法
+            }
+        }
+    }
+
+    // ============================================================
+    // Bug 1: 发射后火箭"消失"且地图视图锁死在太阳
+    // SpawnBlueprint 只把拥有控制权（hasControl）的火箭设为玩家；
+    // 若没有这样的火箭而 rockets 又为空，玩家目标会是 null，
+    // 摄像机停在原点（太阳）且火箭无法被追踪 —— 看起来就是火箭消失了。
+    // 这里在生成结束后强制修正控制权、玩家目标与地图目标。
+    // ============================================================
+    [HarmonyPatch(typeof(RocketManager), "SpawnBlueprint")]
+    public class Patch_RocketManager_SpawnBlueprint_EnsurePlayer
+    {
+        static void Postfix()
+        {
+            // 蓝图已经全部生成完毕 结束世界重建窗口
+            WorldRebuild.End();
+            Patch_GameManager_LoadSave.isRevertLoad = false;
+            try
+            {
+                Rocket[] rockets = UnityEngine.Object.FindObjectsOfType<Rocket>();
+                if (rockets == null || rockets.Length == 0) return;
+
+                List<Rocket> alive = new List<Rocket>();
+                foreach (Rocket rocket in rockets)
+                {
+                    if (rocket == null || rocket.gameObject == null) continue;
+                    alive.Add(rocket);
+                }
+                if (alive.Count == 0) return;
+
+                // 让每个火箭的控制权符合模组规则（有人或允许无人控制）
+                foreach (Rocket rocket in alive)
+                    RefreshRocketControl(rocket);
+
+                if (PlayerController.main == null) return;
+
+                object current = GetMemberValue(PlayerController.main, "player");
+                object currentTarget = current != null ? GetMemberValue(current, "Value") : null;
+                if (currentTarget == null || currentTarget is UnityEngine.Object uo && uo == null)
+                {
+                    Rocket target = null;
+                    foreach (Rocket rocket in alive)
+                    {
+                        if (ReflectionBool.Get(rocket, "hasControl"))
+                        {
+                            target = rocket;
+                            break;
+                        }
+                    }
+                    if (target == null) target = alive[0];
+
+                    SetMemberValue(current, "Value", target);
+                    FixMapViewTarget(target);
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Spawn blueprint recovery", e);
+            }
+        }
+
+        // 起飞/回退后乘员可能尚未完全恢复；这里保证控制权规则仍然生效
+        static void RefreshRocketControl(Rocket rocket)
+        {
+            try
+            {
+                if (rocket.partHolder == null) return;
+                ControlModule[] controls = rocket.partHolder.GetModules<ControlModule>();
+                if (controls == null || controls.Length == 0) return;
+
+                CrewModule[] crews = rocket.partHolder.GetModules<CrewModule>() ?? new CrewModule[0];
+                int occupied = 0;
+                foreach (CrewModule crew in crews)
+                {
+                    if (crew?.seats == null) continue;
+                    foreach (CrewModule.Seat seat in crew.seats)
+                        if (seat != null && seat.HasAstronaut) occupied++;
+                }
+
+                // 没有模组舱的火箭不受影响 保持原值
+                if (crews.Length == 0) return;
+
+                bool shouldControl = occupied > 0 || AstronautUnlockerMod.allowUncrewedControl;
+                foreach (ControlModule control in controls)
+                {
+                    if (control == null || control.hasControl == null) continue;
+                    control.hasControl.Value = shouldControl;
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Rocket control refresh", e);
+            }
+        }
+
+        static void FixMapViewTarget(Rocket target)
+        {
+            try
+            {
+                if (target == null) return;
+                Type mapType = AccessTools.TypeByName("SFS.World.Maps.Map");
+                if (mapType == null) return;
+                object map = GetMemberValue(null, mapType, "view");
+                if (map == null) return;
+                object view = GetMemberValue(map, "view");
+                if (view == null) return;
+                object targetRef = GetMemberValue(view, "target");
+                SetMemberValue(targetRef, "Value", target);
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Map view recovery", e);
+            }
+        }
+
+        static object GetMemberValue(object instance, string name)
+        {
+            return instance == null ? null : GetMemberValue(instance, instance.GetType(), name);
+        }
+
+        static object GetMemberValue(object instance, Type type, string name)
+        {
+            if (type == null) return null;
+            for (Type current = type; current != null; current = current.BaseType)
+            {
+                FieldInfo field = current.GetField(name,
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field != null) return field.GetValue(field.IsStatic ? null : instance);
+                PropertyInfo property = current.GetProperty(name,
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (property != null) return property.GetValue(property.GetAccessors(true)[0].IsStatic ? null : instance, null);
+            }
+            return null;
+        }
+
+        static void SetMemberValue(object instance, string name, object value)
+        {
+            if (instance == null) return;
+            for (Type type = instance.GetType(); type != null; type = type.BaseType)
+            {
+                FieldInfo field = type.GetField(name,
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field != null)
+                {
+                    field.SetValue(field.IsStatic ? null : instance, value);
+                    return;
+                }
+                PropertyInfo property = type.GetProperty(name,
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (property != null)
+                {
+                    property.SetValue(instance, value, null);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>读取形如 Bool_Reference 的对象所代表的布尔值。</summary>
+    internal static class ReflectionBool
+    {
+        public static bool Get(object instance, string fieldName)
+        {
+            try
+            {
+                object holder = Traverse.Create(instance).Field(fieldName).GetValue();
+                if (holder == null) return false;
+                if (holder is bool flag) return flag;
+                object inner = Traverse.Create(holder).Property("Value").GetValue();
+                return inner is bool value && value;
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("ReflectionBool:" + fieldName, e);
+                return false;
             }
         }
     }

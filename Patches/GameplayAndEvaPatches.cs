@@ -46,45 +46,6 @@ namespace AstronautUnlocker
         }
     }
 
-    [HarmonyPatch(typeof(DetachModule), "Detach")]
-    public class Patch_DetachModule_Detach_Diag
-    {
-        static void Prefix(DetachModule __instance, UsePartData data)
-        {
-            try
-            {
-                bool cannotDetach = __instance.cannotDetachIfSurfaceCovered;
-                bool hasSepSurface = __instance.separationSurface != null;
-                int sepSurfaceCount = hasSepSurface && __instance.separationSurface.surfaces != null
-                    ? __instance.separationSurface.surfaces.Count : 0;
-
-                Rocket rocket = (Rocket)typeof(DetachModule)
-                    .GetProperty("Rocket", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                    ?.GetValue(__instance);
-
-                bool surfaceCovered = false;
-                if (cannotDetach && __instance.surfaceForCover != null)
-                {
-                    surfaceCovered = SurfaceData.IsSurfaceCovered(__instance.surfaceForCover);
-                }
-
-                int connectedJoints = 0;
-                if (rocket != null && rocket.jointsGroup != null)
-                {
-                    Part part = __instance.transform.GetComponentInParentTree<Part>();
-                    if (part != null)
-                    {
-                        connectedJoints = rocket.jointsGroup.GetConnectedJoints(part).Count;
-                    }
-                }
-    }
-            catch (Exception e)
-            {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3393", e);
-            }
-        }
-    }
-
     public class Water_Astronaut : MonoBehaviour
     {
         public bool isInWater;
@@ -213,6 +174,16 @@ namespace AstronautUnlocker
     [HarmonyPatch(typeof(VariantRef), "GetPickTags")]
     public class Patch_VariantRef_GetPickTags_FuelPipe
     {
+        // 分类列表在运行时基本不变 缓存一次 避免每次 GetPickTags 都全场景扫描
+        private static PickCategory[] cachedPickCategories;
+
+        private static PickCategory[] GetPickCategories()
+        {
+            if (cachedPickCategories == null || cachedPickCategories.Length == 0)
+                cachedPickCategories = UnityEngine.Resources.FindObjectsOfTypeAll<PickCategory>();
+            return cachedPickCategories;
+        }
+
         static void Postfix(VariantRef __instance, ref List<Variants.PickTag> __result)
         {
             try
@@ -221,8 +192,8 @@ namespace AstronautUnlocker
                 if (!__instance.part.HasModule<FuelPipeModule>()) return;
                 if (__result.Count > 0) return;
 
-                PickCategory[] categories = UnityEngine.Resources.FindObjectsOfTypeAll<PickCategory>();
-                if (categories.Length == 0)
+                PickCategory[] categories = GetPickCategories();
+                if (categories == null || categories.Length == 0)
                 {
                     return;
                 }
@@ -463,14 +434,18 @@ namespace AstronautUnlocker
 
     public static class EVAStatsPanelHider
     {
+        // 飞行信息面板在 EVA 期间数量固定 缓存数组 避免每帧 FindObjectsOfType 全场景扫描
+        private static FlightInfoDrawer[] cachedDrawers;
 
         public static void LateUpdate()
         {
             bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
-            if (!evaSelected) return;
+            if (!evaSelected) { cachedDrawers = null; return; }
 
-            FlightInfoDrawer[] drawers = UnityEngine.Object.FindObjectsOfType<FlightInfoDrawer>(true);
-            foreach (FlightInfoDrawer drawer in drawers)
+            if (cachedDrawers == null || cachedDrawers.Length == 0 || cachedDrawers[0] == null)
+                cachedDrawers = UnityEngine.Object.FindObjectsOfType<FlightInfoDrawer>(true);
+
+            foreach (FlightInfoDrawer drawer in cachedDrawers)
             {
                 if (drawer == null || drawer.menuHolder == null) continue;
                 if (drawer.menuHolder.activeSelf) drawer.menuHolder.SetActive(false);
@@ -553,7 +528,11 @@ namespace AstronautUnlocker
             {
                 bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
 
-                if (isEVA && dashboardLabel == null)
+                // 遥测面板总开关（可在游戏设置里关闭）
+                bool showDash = ModSettings.main != null && ModSettings.main.settings != null
+                    && ModSettings.main.settings.showTelemetryDashboard;
+
+                if (isEVA && showDash && dashboardLabel == null)
                 {
                     dashboardHolder = ModGUIBuilder.CreateHolder(
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_Dashboard");
@@ -564,7 +543,7 @@ namespace AstronautUnlocker
                     dashboardLabel.Color = new Color(1f, 1f, 1f, 0.9f);
                     dashboardLabel.FontSize = 14;
                 }
-                else if (!isEVA && dashboardLabel != null)
+                else if ((!isEVA || !showDash) && dashboardLabel != null)
                 {
                     if (dashboardHolder != null)
                         UnityEngine.Object.Destroy(dashboardHolder);
@@ -572,11 +551,12 @@ namespace AstronautUnlocker
                     dashboardHolder = null;
                 }
 
-                if (isEVA && dashboardLabel != null &&
+                if (isEVA && showDash && dashboardLabel != null &&
                     PlayerController.main?.player?.Value is Astronaut_EVA eva)
                 {
                     updateTimer += Time.deltaTime;
-                    if (updateTimer >= 0.01f)
+                    // 刷新间隔由游戏设置里的 Telemetry refresh rate（Hz）决定，默认 20Hz
+                    if (updateTimer >= ModSettings.TelemetryRefreshInterval())
                     {
                         updateTimer = 0f;
                         UpdateTelemetry(eva, dashboardLabel);
@@ -632,16 +612,19 @@ namespace AstronautUnlocker
                 // 仅在建造/世界模式显示（非部件选择界面）
                 if (!settings.build && !settings.game) return;
 
-                // 需为控制部件
-                if (!__instance.HasModule<ControlModule>()) return;
-
                 bool hasNativeCrew = AstronautUnlockerMod.HasNativeCrewModule(__instance);
+
+                // 注入 CrewModule 前必须要求 ControlModule：
+                // 这是为了防止玩家把宇航员塞进邮箱（mailbox）、配重块这类非载人部件。
+                // 不要放宽这个限制。
+                bool canHostCrew = __instance.HasModule<ControlModule>();
 
                 string partName = __instance.name;
                 Part capturedPart = __instance;
 
-                // 原生 CrewModule 已自带座位 只为其他控制部件显示 Enable EVA
-                if (!hasNativeCrew)
+                // 原生 CrewModule 已自带座位 只为其他部件显示 Enable EVA
+                // 且必须有 ControlModule（防止往邮箱等部件里塞宇航员）
+                if (!hasNativeCrew && canHostCrew)
                 {
                     drawer.DrawToggle(-500,
                     () => "Enable EVA",
@@ -681,7 +664,7 @@ namespace AstronautUnlocker
                 }
 
                 // 仅模组适配部件可配置容量 原生座椅保留其真实单座位
-                if (settings.build && !hasNativeCrew)
+                if (settings.build && !hasNativeCrew && canHostCrew)
                 {
                     drawer.DrawButton(-501,
                         () => "Crew Capacity",
@@ -689,6 +672,25 @@ namespace AstronautUnlocker
                         () => AstronautUnlockerMod.OpenCrewCapacityMenu(capturedPart),
                         () => true,
                         null, null);
+                }
+
+                // Bug 4: 世界模式下给所有带座舱的部件一个直通乘员菜单入口
+                if (settings.game)
+                {
+                    CrewModule[] crewModules = __instance.GetModules<CrewModule>();
+                    if (crewModules != null && crewModules.Length > 0)
+                    {
+                        CrewModule capturedCrew = crewModules[0];
+                        drawer.DrawButton(-505,
+                            () => "Astronaut Menu",
+                            () => "Open",
+                            () => capturedCrew.OpenPartMenu(canBoardWorld: true),
+                            () => true,
+                            null, null);
+
+                        drawer.DrawText(-506,
+                            ModSettings.BindingHint());
+                    }
                 }
             }
             catch (Exception e)
@@ -713,9 +715,15 @@ namespace AstronautUnlocker
                         UpdateDriver.ScheduleCrewCapacityApply(__instance, refreshMenu: false);
                     return;
                 }
+                // 必须有 ControlModule 才允许注入（防止往邮箱等部件里塞宇航员）
                 if (!__instance.HasModule<ControlModule>()) return;
 
                 string partName = __instance.name;
+                // 部件自带持久化乘员配置时也必须注入（重启/回退后仍能恢复）
+                bool storedConfig = CrewPersistence.HasStoredConfig(__instance);
+                if (storedConfig)
+                    AstronautUnlockerMod.evaConfig[partName] = true;
+
                 if (AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
                     AstronautUnlockerMod.evaConfig[partName])
                 {
@@ -779,6 +787,11 @@ namespace AstronautUnlocker
                             savedList.Add(seat.astronaut.Value);
                         }
                     }
+
+                    // 同步部件自身持久化变量 确保写入的蓝图/存档带上当前配置
+                    CrewModule injected = part.GetComponentInChildren<CrewModule>(true);
+                    if (injected != null)
+                        CrewPersistence.SavePartState(part, injected);
 
                     if (savedList.Count > 0)
                     {

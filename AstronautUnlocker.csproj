@@ -17,17 +17,23 @@
     <Compile Include="FlagCustomization.cs" />
     <Compile Include="AstronautRuntimeFixes.cs" />
     <Compile Include="ModLogger.cs" />
+    <Compile Include="CrewPersistence.cs" />
+    <Compile Include="CustomSaveBridge.cs" />
+    <Compile Include="ModSettings.cs" />
     <Compile Include="Patches\AstronautCorePatches.cs" />
     <Compile Include="Patches\FlagAndUiPatches.cs" />
     <Compile Include="Patches\RuntimeAndUiHelpers.cs" />
     <Compile Include="Patches\GameplayAndEvaPatches.cs" />
-    <Compile Include="Patches\LogNoiseFilter.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Game assemblies from PC decompiled reverse -->
     <Reference Include="Assembly-CSharp">
       <HintPath>$(DllDir)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(DllDir)/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
@@ -88,6 +94,11 @@
     </Reference>
     <Reference Include="UnityEngine.JSONSerializeModule">
       <HintPath>$(DllDir)/UnityEngine.JSONSerializeModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Optional dependency: Custom Save Data (https://github.com/AstroTheRabbit/Custom-Save-Data-SFS) -->
+    <Reference Include="CustomSaveData">
+      <HintPath>$(DllDir)/CustomSaveData.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
