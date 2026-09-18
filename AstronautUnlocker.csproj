@@ -24,6 +24,7 @@
     <Compile Include="Patches\FlagAndUiPatches.cs" />
     <Compile Include="Patches\RuntimeAndUiHelpers.cs" />
     <Compile Include="Patches\GameplayAndEvaPatches.cs" />
+    <Compile Include="Patches\LaunchWarningPatches.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -35,7 +35,7 @@ namespace AstronautUnlocker
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.9.1";
+        public override string ModVersion => "3.9.2";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -114,12 +114,107 @@ namespace AstronautUnlocker
 
         public override void Load()
         {
+            // 模组重载时，SFS 会再次调用 Load()。先取消自身旧订阅并按命名前缀清理上一实例可能残留的
+            // DontDestroyOnLoad 对象，再重新订阅，避免重复初始化或旧实例对象残留。
+            // 注意：场景加载处理器【只在这里】管理，绝不能挂到 SceneManager.sceneUnloaded 上——
+            // 该事件在每次正常场景切换（标题→Hub、Hub→蓝图→世界…）都会触发，若在其中 -= 场景处理器
+            // 或销毁活动 UI 对象，会导致 Hub 尚未初始化就被取消订阅（菜单打不开 / Hub UI 消失）的严重回归。
+            CleanupModSubscriptions();
+            DestroyPersistentObjects();
+            DestroyOrphanObjects();
+
             SceneHelper.OnHubSceneLoaded += OnHubSceneLoaded;
             SceneHelper.OnBuildSceneLoaded += OnBuildSceneLoaded;
             SceneHelper.OnWorldSceneLoaded += OnWorldSceneLoaded;
+
             GameObject driverObj = new GameObject("__AstronautUnlockerUpdater");
             UnityEngine.Object.DontDestroyOnLoad(driverObj);
+            RegisterPersistent(driverObj);
             driverObj.AddComponent<UpdateDriver>();
+
+            // 重载安全：SFS 重载模组只会再次调用 Load()，并不会重新加载当前场景，
+            // 因此 OnHubSceneLoaded / OnBuildSceneLoaded / OnWorldSceneLoaded 这些场景事件
+            // 不会因“重载”而重新触发。若不在此手动重跑，重载后当前场景里的菜单 / 宇航员状态 /
+            // EVA 基础设施会被上方清理掉却不再重建，必须手动切场景或重启游戏 UI 才会回来——
+            // 这与“场景切换误删 Hub UI”是同族的“生命周期事件触发时机不对导致 UI 消失”问题。
+            // 这里按当前实际处于的场景，重跑对应初始化（各 handler 内部均有 null 守卫，可重复执行）。
+            try
+            {
+                if (HubManager.main != null)
+                    OnHubSceneLoaded(default(UnityEngine.SceneManagement.Scene));
+                else if (BuildManager.main != null)
+                    OnBuildSceneLoaded(default(UnityEngine.SceneManagement.Scene));
+                else if (Base.worldBase != null)
+                    OnWorldSceneLoaded(default(UnityEngine.SceneManagement.Scene));
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Reload re-init", e);
+            }
+        }
+
+        // ---------------------------------------------------------- 重载清理
+        // Mod 基类没有 Unload 钩子，但 SFS 在重载模组时会再次调用 Load()——上面的 Load() 在开头
+        // 已经先取消订阅 + 清理残留对象，因此重载安全。此处【不】挂 SceneManager.sceneUnloaded，
+        // 以免正常场景切换时误删活动 UI / 误取消场景处理器（3.9.2 的回归已据此回退）。
+
+        private static readonly System.Collections.Generic.HashSet<GameObject> persistentObjects =
+            new System.Collections.Generic.HashSet<GameObject>();
+
+        private static readonly string[] PersistentNamePrefixes =
+            { "__Astronaut", "__Rock", "__Persistent" };
+
+        // AstronautModSettings 由 Early_Load 每次重建，属关键对象；不纳入“孤儿”按名销毁，
+        // 避免重载时序竞态下误删当前实例的设置对象（旧实例的会在 DestroyPersistentObjects 里按集合销毁）。
+        private static readonly string[] SafeNamePrefixes = { "AstronautModSettings" };
+
+        private static void RegisterPersistent(GameObject go)
+        {
+            if (go != null) persistentObjects.Add(go);
+        }
+
+        private static void CleanupModSubscriptions()
+        {
+            SceneHelper.OnHubSceneLoaded -= OnHubSceneLoaded;
+            SceneHelper.OnBuildSceneLoaded -= OnBuildSceneLoaded;
+            SceneHelper.OnWorldSceneLoaded -= OnWorldSceneLoaded;
+        }
+
+        // 销毁本实例追踪的 DontDestroyOnLoad 对象（同一程序集重载时调用）
+        private static void DestroyPersistentObjects()
+        {
+            foreach (var go in persistentObjects)
+                if (go != null) UnityEngine.Object.Destroy(go);
+            persistentObjects.Clear();
+        }
+
+        // 按命名前缀销毁“不属于当前实例”的残留对象（跨程序集重载时，旧对象不在当前集合里）
+        private static void DestroyOrphanObjects()
+        {
+            try
+            {
+                var all = UnityEngine.Object.FindObjectsOfType<GameObject>();
+                if (all == null) return;
+                foreach (var go in all)
+                {
+                    if (go == null || persistentObjects.Contains(go)) continue;
+                    if (go.name == null) continue;
+                    foreach (var prefix in SafeNamePrefixes)
+                        if (go.name.StartsWith(prefix)) continue; // 关键对象，跳过
+                    foreach (var prefix in PersistentNamePrefixes)
+                    {
+                        if (go.name.StartsWith(prefix))
+                        {
+                            UnityEngine.Object.Destroy(go);
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Orphan cleanup", e);
+            }
         }
 
         private static void OnHubSceneLoaded(UnityEngine.SceneManagement.Scene scene)
@@ -224,6 +319,7 @@ namespace AstronautUnlocker
                     
                     GameObject go = new GameObject("__AstronautManagerFallback");
                     UnityEngine.Object.DontDestroyOnLoad(go);
+                    RegisterPersistent(go);
                     AstronautManager mgr = go.AddComponent<AstronautManager>();
                 }
                 else
@@ -317,6 +413,7 @@ namespace AstronautUnlocker
                 }
                 GameObject go = new GameObject("__RockSelectorFallback");
                 UnityEngine.Object.DontDestroyOnLoad(go);
+                RegisterPersistent(go);
                 RockSelector rs = go.AddComponent<RockSelector>();
             }
             catch (Exception e)
@@ -389,6 +486,7 @@ namespace AstronautUnlocker
             if (AstronautMenu.main != null) return;
             GameObject go = new GameObject("__AstronautMenuHolder");
             UnityEngine.Object.DontDestroyOnLoad(go);
+            RegisterPersistent(go);
             go.AddComponent<AstronautMenu>();
         }
 
@@ -403,6 +501,7 @@ namespace AstronautUnlocker
             {
                 GameObject go = new GameObject("__AstronautStateSafety");
                 UnityEngine.Object.DontDestroyOnLoad(go);
+                RegisterPersistent(go);
                 AstronautState st = go.AddComponent<AstronautState>();
                 if (st.state == null)
                     st.state = new WorldSave.Astronauts();
@@ -434,6 +533,7 @@ namespace AstronautUnlocker
             }
             GameObject go = new GameObject("__PersistentAstronautState");
             UnityEngine.Object.DontDestroyOnLoad(go);
+            RegisterPersistent(go);
             AstronautState st = go.AddComponent<AstronautState>();
             if (st.state == null)
                 st.state = new WorldSave.Astronauts();
@@ -815,6 +915,7 @@ namespace AstronautUnlocker
             if (ModSettings.main != null) return;
             GameObject go = new GameObject("AstronautModSettings");
             UnityEngine.Object.DontDestroyOnLoad(go);
+            RegisterPersistent(go);
             go.AddComponent<ModSettings>(); // Awake 内 Load
         }
 
@@ -1427,7 +1528,7 @@ namespace AstronautUnlocker
                         if (savedList.Count > 0)
                             savedAstronauts[part.name] = savedList;
                     }
-                    UnityEngine.Object.DestroyImmediate(crew);
+                    UnityEngine.Object.Destroy(crew);
                 }
                 injectedPartIds.Remove(partId);
                 ClearModuleCache(part);

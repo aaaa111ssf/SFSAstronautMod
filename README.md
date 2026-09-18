@@ -66,18 +66,35 @@
 
 ## 更新日志 / Changelog
 
+### 【v3.9.2 更新 / v3.9.2 Update】
+
+本次更新修复"重载模组后世界 / 蓝图页面出问题"与"宇航员(EVA)仪表盘消失"两大回归，并改进发射前"缺失宇航员"提示为可选择的双按钮。
+**This release fixes two regressions — "World/Blueprint pages break after reloading the mod" and "the astronaut (EVA) telemetry dashboard disappeared" — and upgrades the pre-launch "missing astronaut" prompt into a choosable two-button dialog.**
+
+- **修复：重载模组后世界 / 蓝图页面报错，并恢复 EVA 宇航员仪表盘**
+  根因：`Mod` 基类没有卸载钩子，重载模组时旧场景事件与一批 `DontDestroyOnLoad` 对象（驱动、宇航员状态、乘员菜单、RockSelector、ModSettings 等）会残留。最初用 `SceneManager.sceneUnloaded` 做清理，但该事件在**每次正常场景切换（标题→Hub、Hub→蓝图、蓝图→世界…）**都会触发——既会在 Hub 初始化前 `-=` 取消 `OnHubSceneLoaded` 等场景处理器（**菜单打不开、Hub UI 消失**），又会按 `__Astronaut` 前缀销毁活动对象，连托管 EVA 仪表盘刷新循环的 `UpdateDriver` 也被误删，导致**仪表盘消失、模组几乎无法使用**。
+  修复：清理逻辑**只在 `Load()` 内进行**（SFS 重载模组会再次调用 `Load()`）。`Load()` 开头先 `DestroyPersistentObjects()`（销毁上一实例追踪的对象并清空集合）再 `DestroyOrphanObjects()`（按前缀清理跨程序集残留），绝不触碰正常场景切换。EVA 遥测仪表盘（速度 / 高度 / 燃料）随之恢复正常。此外，`Load()` 末尾会按**当前实际处于的场景**手动重跑对应初始化（Hub / 蓝图 / 世界）：因为重载模组只重调 `Load()`、不重新加载场景，若不在 `Load()` 里补这一刀，重载后当前场景的菜单 / 宇航员状态 / EVA 基础设施会被清掉却不再重建，必须手动切场景或重启游戏 UI 才回来。
+  **Fix: the root cause was a `SceneManager.sceneUnloaded` cleanup that fired on every normal scene transition — it both unsubscribed the Hub/Build/World scene handlers before they ran (menu couldn't open, Hub UI vanished) and destroyed live `__Astronaut*` objects by prefix, including the `UpdateDriver` that refreshes the EVA telemetry dashboard, so the dashboard disappeared. Cleanup now runs only inside `Load()`: on reload it first destroys its tracked objects then name-prefixed orphans, never touching normal play. The EVA telemetry dashboard (speed/altitude/fuel) is restored. `Load()` also re-runs the active scene's init (Hub/Build/World) at its end, since reloading a mod re-invokes `Load()` without reloading the scene — without this, the current scene's menu/state/EVA infra would be cleaned yet never rebuilt, requiring a manual scene switch or game restart.**
+
+- **改进：发射前"缺失宇航员"警告改为双按钮（仍继续 / 取消）**
+  拦截条件不变：若火箭含乘员舱、却全部为空座、且不存在任何控制来源（原生 `ControlModule` 有控制、或某个乘员舱已有人、或开启"无乘员控制"），在 `BuildManager.Launch` 之前弹出提示。现在提供两个选择：
+  - **仍继续 / Continue Anyway**：忽略警告，照常发射（由玩家自行承担无控制风险）；
+  - **取消 / Cancel**：关闭提示，不发射，回到蓝图修正后再发射。
+  混合舰队（探测器 + 空乘员舱）因为有探测器提供控制，不会触发此警告。
+  **Improved: a pre-launch "missing astronaut" warning. Intercept condition unchanged. The dialog now offers two choices: "Continue Anyway" launches regardless (player accepts the no-control risk); "Cancel" closes the prompt without launching. Mixed fleets (probe + empty crew seat) keep control via the probe and are not warned.**
+
 ### 【v3.9.1 更新 / v3.9.1 Update】
 
 本次更新重写了注入型乘员舱的数据存储方式，解决了"发射后火箭消失"、"回退后失去控制"与"重启后配置丢失"这三个长期问题的共同根因。
 **This release rewrites how injected crew capsules store their data, fixing the common root cause of the "rocket disappears after launch", "control lost after revert" and "config lost after restart" bugs.**
 
-- **修复：重启 SFS 后自定义太空舱配置丢失**
+- **修复：重启 SFS 后自定义太空舱配置丢失（原 Bug 3）**
   每个被模组适配的部件实例会把自身的"Crew Capacity / 每个座位的宇航员"写入该部件原生的文本变量（`AstronautMod_Cap`、`AstronautMod_Seat0…`）。这些变量随 `PartSave.TEXT_VARIABLES` 走原生存档管线，因此会随蓝图、火箭存档、世界存档、快速存档一起落盘，不再依赖全局 JSON 或 InstanceID 缓存。
   **Fix: per-part state (capacity + astronaut per seat) is now written into the part's own native text variables, so it travels inside blueprints, rocket saves, and world saves through the vanilla pipeline.**
 - **新增（可选依赖）：Custom Save Data 集成**
   若安装了 [Custom-Save-Data-SFS](https://github.com/AstroTheRabbit/Custom-Save-Data-SFS)（`CustomSaveData.dll`），模组还会把乘员配置额外写入蓝图 customData 与世界存档 customData 作为冗余备份；未安装时该桥接自动禁用，模组照常工作。
   **New (optional dependency): when Custom Save Data is installed, crew data is also mirrored into blueprint and world save custom data. Without it, the bridge disables itself.**
-- **修复：发射后火箭消失、地图视图锁死在太阳**
+- **修复：发射后火箭消失、地图视图锁死在太阳（原 Bug 1）**
   过去发射时乘员名要通过脆弱的"部件名 → 宇航员名"全局缓存重建；一旦某个座舱恢复失败，`hasControl` 就为假，`RocketManager.SpawnBlueprint` 找不到可控火箭，玩家目标为空、摄像机停在原点（太阳）。现在乘员随部件恢复，同时在 `SpawnBlueprint` 之后强制校正控制权、玩家目标与地图视图目标。
   **Fix: after a blueprint is spawned the mod now guarantees a controllable rocket exists, assigns the player target and re-points the map view, so neither the rocket nor the camera can get stranded.**
 - **修复："恢复到发射状态" / 回退 30 秒 / 3 分钟后宇航员消失并失去控制（原 Bug 2）**
@@ -94,6 +111,11 @@
   根因是 `WorldSave.Save()` 中的 `if (!DevSettings.DisableAstronauts)`：PC 版该开关恒为 `true` 且是返回常量的属性（很可能被 JIT 内联），导致所有走 `SavingCache` 的存档**从不**写入 `Astronauts.txt`，新建的宇航员只活在内存里，切场景重载即丢失。
   现在名册会在创建/解雇时同步直写 `Astronauts.txt`，并在每次 `WorldSave.Save` 后无条件补写；同时 Hub 每 10 秒的自动保存会先同步最新名册，避免用旧引用覆盖；场景重载时还会把内存中缺失的宇航员补回（已解雇的除外）。
   **Fix: the astronaut roster is now written straight to `Astronauts.txt` on create/discharge and after every `WorldSave.Save`, the Hub's periodic save syncs the live roster before writing, and scene reloads merge back any in-memory astronauts missing from disk.**
+
+- **修复：探测器 + 空座位混编舰队，重启后火箭丢失控制权（Bug 5）**
+  根因在 `RefreshRocketControl`：旧实现把火箭上**所有** `ControlModule.hasControl` 统一设成同一个值（= 任意座位有宇航员 或 允许无人控制）。只要火箭上存在任意一个 `CrewModule`（例如一个空座位）且 `allowUncrewedControl=false`，就会把探测器核心等原生控制部件的 `hasControl` 一并清零，导致火箭失去控制。首启时该空座位的 `CrewModule` 尚未注入（`crews.Length==0` 提前返回），所以仍有控制；重启后 `CrewModule` 已从存档恢复，于是被清零——与"首启有控制、重启无控制"的现象完全吻合（玩家怀疑是"按最后一个被检查的部件取状态、顺序不定"，真实机制同构：控制权不该被空座位清零）。
+  新实现按**部件**取"逻辑或"：只管理带 `CrewModule` 的部件（按其自身座位占用决定控制权）；探测器/指令舱等**只带 `ControlModule`、不带 `CrewModule`** 的原生控制部件保留其原生控制权，绝不被空座位规则清零。因此只要火箭上任意部件有控制权，整箭就有控制权，与遍历顺序无关。
+  **Fix: mixed fleets (probe + empty seat) lost control after restart. `RefreshRocketControl` used to overwrite *every* `ControlModule.hasControl` with one shared value, so a single empty seat (a `CrewModule` with no astronaut) zeroed the probe's control too. Now control is recomputed per part: only parts that carry a `CrewModule` are governed by seat occupancy; native control parts (probes/command pods with no `CrewModule`) keep their own control. The rocket has control if *any* part does — independent of iteration order.**
 
 - **性能与清理 / Performance & cleanup**
   移除了全局 `Debug.Log` 拦截补丁（不再对每条日志做 Harmony 前缀，也不隐藏数值型诊断日志）；删除了未使用的 `buoyancyPostfixLogged` / `persistentState` 字段与一段只计算局部变量、从不落地的"分离模块"诊断补丁。  每帧热路径改为缓存：图标相机引用、飞行信息面板数组、燃料管分类数组只扫描一次；EVA 仪表盘刷新频率可在游戏设置里自定义（默认 20Hz，对驾驶员等同实时，且比 100Hz 少 5 倍 UI 开销）。

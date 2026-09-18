@@ -1299,22 +1299,43 @@ namespace AstronautUnlocker
                 if (controls == null || controls.Length == 0) return;
 
                 CrewModule[] crews = rocket.partHolder.GetModules<CrewModule>() ?? new CrewModule[0];
-                int occupied = 0;
-                foreach (CrewModule crew in crews)
-                {
-                    if (crew?.seats == null) continue;
-                    foreach (CrewModule.Seat seat in crew.seats)
-                        if (seat != null && seat.HasAstronaut) occupied++;
-                }
 
-                // 没有模组舱的火箭不受影响 保持原值
+                // 没有乘员舱的火箭（例如只有探测器核心）完全不受本模组影响：
+                // 控制权交由 SFS 原生逻辑（探测器核心的 ControlModule 默认自带控制权）。
                 if (crews.Length == 0) return;
 
-                bool shouldControl = occupied > 0 || AstronautUnlockerMod.allowUncrewedControl;
+                // 关键修复：火箭控制权 = 各部件控制权的“逻辑或”（Rocket.Awake 中
+                // hasControl 由所有 ControlModule.hasControl 取 Any 得出）。
+                //
+                // 旧实现把火箭上【所有】ControlModule.hasControl 统一设成同一个值：
+                // 只要存在一个空座位（CrewModule 存在、无宇航员、且未开启无人控制），
+                // 就会把探测器核心等原生控制部件的 hasControl 一并清零，于是火箭丢失控制权。
+                // 首启时该空座位的 CrewModule 尚未注入（crews.Length==0 提前返回），所以仍有控制；
+                // 重启后 CrewModule 已从存档恢复，于是被清零 —— 与上报现象完全吻合。
+                //
+                // 新实现只管理“带 CrewModule 的部件”（乘员/宇航员舱），按该部件自身座位占用
+                // 决定其控制权；探测器/指令舱等【只带 ControlModule、不带 CrewModule】的原生
+                // 控制部件保留其原生控制权，绝不被空座位规则清零。这样只要火箭上任意部件有
+                // 控制权，整箭就有控制权，与部件遍历顺序无关。
                 foreach (ControlModule control in controls)
                 {
                     if (control == null || control.hasControl == null) continue;
-                    control.hasControl.Value = shouldControl;
+
+                    Part part = control.GetComponentInParent<Part>();
+                    if (part == null) continue;
+
+                    // 仅当该部件自身带 CrewModule 时，才按宇航员占用规则管理控制权；
+                    // 纯控制部件（探测器等）保持原生控制权不变。
+                    if (!part.HasModule<CrewModule>()) continue;
+
+                    int partOccupied = 0;
+                    CrewModule crew = part.GetModules<CrewModule>().FirstOrDefault();
+                    if (crew?.seats != null)
+                        foreach (CrewModule.Seat seat in crew.seats)
+                            if (seat != null && seat.HasAstronaut) partOccupied++;
+
+                    bool partShouldControl = partOccupied > 0 || AstronautUnlockerMod.allowUncrewedControl;
+                    control.hasControl.Value = partShouldControl;
                 }
             }
             catch (Exception e)
