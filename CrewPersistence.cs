@@ -6,29 +6,9 @@ using SFS.Parts;
 using SFS.Variables;
 using SFS.World;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
-    /// <summary>
     /// Per-part persistence for the CrewModule that this mod injects into custom capsules.
-    ///
-    /// Problem this solves:
-    /// The injected CrewModule and its seats are created at runtime, so they are not part of the
-    /// part prefab and never reach <see cref="SFS.Parts.PartSave"/>. That is why the mod used to keep
-    /// its state in a global JSON keyed by <c>part.name</c> plus volatile Unity instance IDs, which
-    /// broke on launch, on every revert and after restarting the game.
-    ///
-    /// Solution:
-    /// Every injected part gets its own string variables inside its native <c>VariablesModule</c>
-    /// (marked <c>save = true</c>). Those are picked up automatically by the vanilla pipeline:
-    /// blueprint -> PartSave.TEXT_VARIABLES -> PartsLoader -> new Part. Nothing has to be re-matched
-    /// by part name or instance id any more, so blueprints, rocket saves, world saves, quick saves
-    /// and "revert to launch / 30 sec / 3 min" all restore the crew reliably.
-    ///
-    /// Variable layout (all inside TEXT_VARIABLES):
-    ///   AstronautMod_Cap   -> crew capacity of this part instance
-    ///   AstronautMod_Seat0 -> astronaut name of seat 0 ("" == empty seat)
-    ///   AstronautMod_Seat1 -> ... and so on
-    /// </summary>
     public static class CrewPersistence
     {
         public const string CapacityVariable = "AstronautMod_Cap";
@@ -69,12 +49,7 @@ namespace AstronautUnlocker
 
         // ---------------------------------------------------------------- installation
 
-        /// <summary>
-        /// Patches <c>VariableList&lt;string&gt;.LoadDictionary</c> so that variables belonging to this mod
-        /// are re-created before a saved part is restored. PartsLoader loads with
-        /// addMissingVariables = (false, false), which silently drops unknown variables, so without
-        /// this the mod's values would never make it back into a freshly created part.
-        /// </summary>
+    /// Patches VariableList&lt;string&gt;.LoadDictionary so that variables belonging to this mod
         public static void Install(Harmony harmony)
         {
             try
@@ -320,10 +295,7 @@ namespace AstronautUnlocker
             }
         }
 
-        /// <summary>
-        /// Writes crew data recovered from an external source (e.g. Custom Save Data) into the part's
-        /// own variables so the standard restore path picks it up.
-        /// </summary>
+    /// Writes crew data recovered from an external source (e.g. Custom Save Data) into the part's
         public static void Import(Part part, int capacity, IList<string> crew)
         {
             if (part == null)

@@ -2,7 +2,7 @@ using System;
 using HarmonyLib;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     internal static class BareNumericLogFilter
     {

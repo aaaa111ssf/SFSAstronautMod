@@ -1,0 +1,6 @@
+D:\zm\ugu\记得\SFSAstronautMod-main\bin\Release\netstandard2.1\AstronautMod.deps.json
+D:\zm\ugu\记得\SFSAstronautMod-main\bin\Release\netstandard2.1\AstronautMod.dll
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautMod.csproj.AssemblyReference.cache
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautMod.GeneratedMSBuildEditorConfig.editorconfig
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautMod.csproj.CoreCompileInputs.cache
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautMod.dll

@@ -1,0 +1,108 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>AstronautMod</AssemblyName>
+    <RootNamespace>AstronautMod</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <DllDir>/workspace/game_dlls</DllDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="AstronautModMain.cs" />
+    <Compile Include="FlagCustomization.cs" />
+    <Compile Include="AstronautRuntimeFixes.cs" />
+    <Compile Include="ModLogger.cs" />
+    <Compile Include="CrewPersistence.cs" />
+    <Compile Include="CustomSaveBridge.cs" />
+    <Compile Include="ModSettings.cs" />
+    <Compile Include="Patches\AstronautCorePatches.cs" />
+    <Compile Include="Patches\FlagAndUiPatches.cs" />
+    <Compile Include="Patches\RuntimeAndUiHelpers.cs" />
+    <Compile Include="Patches\GameplayAndEvaPatches.cs" />
+    <Compile Include="Patches\LaunchWarningPatches.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Game assemblies from PC decompiled reverse -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(DllDir)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(DllDir)/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(DllDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(DllDir)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(DllDir)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(DllDir)/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(DllDir)/UnityEngine.AnimationModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.Physics2DModule">
+      <HintPath>$(DllDir)/UnityEngine.Physics2DModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(DllDir)/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(DllDir)/UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(DllDir)/UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputModule">
+      <HintPath>$(DllDir)/UnityEngine.InputModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(DllDir)/UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>$(DllDir)/UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.SpriteMaskModule">
+      <HintPath>$(DllDir)/UnityEngine.SpriteMaskModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(DllDir)/Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.JSONSerializeModule">
+      <HintPath>$(DllDir)/UnityEngine.JSONSerializeModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!--
+      注意：不要在这里引用 CustomSaveData。
+      Custom Save Data 是【可选依赖】（github.com/AstroTheRabbit/Custom-Save-Data-SFS），
+      桥接层 CustomSaveBridge.cs 已全部改为反射访问——本模组在没安装该依赖时必须能
+      正常编译和运行。旧实现带编译期强类型引用，依赖缺失时 Subscribe() 的 JIT 会
+      每帧抛 FileNotFoundException（Player.log 2735 次）。
+    -->
+  </ItemGroup>
+</Project>

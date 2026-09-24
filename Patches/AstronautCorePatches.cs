@@ -26,7 +26,7 @@ using UnityEngine.UI;
 using ModGUIButton = SFS.UI.ModGUI.Button;
 using ModGUIBuilder = SFS.UI.ModGUI.Builder;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     [HarmonyPatch(typeof(DevSettings), "get_DisableAstronauts")]
     public class Patch_DisableAstronauts
@@ -90,9 +90,9 @@ namespace AstronautUnlocker
 
                 // 无论 selfManageSaving 是否为 true 都同步落盘一次：
                 // Hub 里新建的宇航员必须能带到建造/蓝图场景
-                AstronautUnlockerMod.DischargedAstronauts.Remove(astronautName);
-                AstronautUnlockerMod.SaveAstronautRosterToDisk();
-                AstronautUnlockerMod.PersistAstronautStateToCache();
+                AstronautModMain.DischargedAstronauts.Remove(astronautName);
+                AstronautModMain.SaveAstronautRosterToDisk();
+                AstronautModMain.PersistAstronautStateToCache();
 
                 return false; // 跳过原方法
             }
@@ -113,10 +113,10 @@ namespace AstronautUnlocker
             try
             {
                 if (!string.IsNullOrEmpty(astronautName))
-                    AstronautUnlockerMod.DischargedAstronauts.Add(astronautName);
+                    AstronautModMain.DischargedAstronauts.Add(astronautName);
 
-                AstronautUnlockerMod.SaveAstronautRosterToDisk();
-                AstronautUnlockerMod.PersistAstronautStateToCache();
+                AstronautModMain.SaveAstronautRosterToDisk();
+                AstronautModMain.PersistAstronautStateToCache();
             }
             catch (Exception e)
             {
@@ -125,11 +125,6 @@ namespace AstronautUnlocker
         }
     }
 
-    // ============================================================
-    // Hub 会每 10 秒（以及退出时）用自己缓存的 WorldSave 覆盖持久化数据。
-    // 那份缓存里的 astronauts 可能是旧引用，会把刚创建的宇航员抹掉。
-    // 保存前把最新名册同步进去。
-    // ============================================================
     [HarmonyPatch(typeof(HubManager), "UpdatePersistent")]
     public class Patch_HubManager_UpdatePersistent
     {
@@ -148,7 +143,7 @@ namespace AstronautUnlocker
                 hubSave.astronauts = AstronautState.main.state;
 
                 // SavingCache.SaveWorldPersistent 不一定会写 Astronauts.txt，这里补写
-                AstronautUnlockerMod.SaveAstronautRosterToDisk();
+                AstronautModMain.SaveAstronautRosterToDisk();
             }
             catch (Exception e)
             {
@@ -157,9 +152,6 @@ namespace AstronautUnlocker
         }
     }
 
-    // WorldSave.Save 里的 `if (!DevSettings.DisableAstronauts)` 在 PC 版恒为 true，
-    // 且该属性返回常量、很可能被 JIT 内联，导致对 get_DisableAstronauts 的 Harmony 补丁失效。
-    // 结果就是所有走 SavingCache 的存档都不会写 Astronauts.txt。这里无条件补写一次。
     [HarmonyPatch(typeof(WorldSave), "Save")]
     public class Patch_WorldSave_Save_WriteAstronauts
     {
@@ -188,16 +180,7 @@ namespace AstronautUnlocker
         }
     }
 
-    // ============================================================
-    // 回退复活 正常进入保持死亡
-    // 判断依据 LoadSave 来自 LoadPersistentAndLaunch（正常进入）则保存死亡
-    // 来自其他回退则复活本次任务死亡的乘员
-    // ============================================================
-    /// <summary>
     /// 世界被拆除并重建的时间窗口（发射 / 回退 / 读档）。
-    /// 这段时间内座舱的销毁与新座椅的初始化都不得判定乘员死亡或清空座椅，
-    /// 否则回退后乘员会消失、失去控制权（Bug 2）。
-    /// </summary>
     public static class WorldRebuild
     {
         static bool active;
@@ -294,7 +277,6 @@ namespace AstronautUnlocker
                 Patch_GameManager_LoadPersistentAndLaunch.isPersistentEntry = false;
                 isRevertLoad = !isPersistentEntry;
                 
-
                 // 回退会重建世界 注入部件座椅不会被序列化 需先捕获乘员名
                 if (isRevertLoad)
                 {
@@ -375,7 +357,7 @@ namespace AstronautUnlocker
                     }
 
                     // 若旧座位缓存中混入 EVA 名称 EVA 身份优先 不允许恢复成座位乘员
-                    foreach (List<string> names in AstronautUnlockerMod.savedAstronauts.Values)
+                    foreach (List<string> names in AstronautModMain.savedAstronauts.Values)
                         if (names != null) names.RemoveAll(name => IsPendingEVA(name));
                 }
 
@@ -409,7 +391,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1549", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1549", e);
             }
         }
 
@@ -471,10 +453,6 @@ namespace AstronautUnlocker
 
                 Patch_Seat_OnDestroy.destroyedSeatAstronauts.Clear();
 
-                // --- 回退复活 ---
-                // 这是真正的回退（非正常进入） 存档可能带 stale alive=false
-                // 仅复活任务开始前仍存活 本次任务死亡的乘员
-                
                 if (!isPersistentEntry && AstronautState.main?.state?.astronauts != null)
                 {
                     var baseline = Patch_GameManager_LoadPersistentAndLaunch.launchDeadBaseline;
@@ -494,7 +472,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1633", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1633", e);
             }
         }
 
@@ -526,7 +504,7 @@ namespace AstronautUnlocker
                     if (crew == null || crew.seats == null) continue;
                     Part part = Traverse.Create(crew).Field("part").GetValue<Part>();
                     if (part == null || string.IsNullOrEmpty(part.name)) continue;
-                    if (injectedOnly && !AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID())) continue;
+                    if (injectedOnly && !AstronautModMain.injectedPartIds.Contains(part.GetInstanceID())) continue;
 
                     List<string> names = crew.seats
                         .Where(seat => seat?.astronaut != null && !string.IsNullOrEmpty(seat.astronaut.Value))
@@ -534,35 +512,32 @@ namespace AstronautUnlocker
                         .Distinct().ToList();
                     if (names.Count == 0) continue;
 
-                    if (!AstronautUnlockerMod.savedAstronauts.ContainsKey(part.name))
-                        AstronautUnlockerMod.savedAstronauts[part.name] = new List<string>();
+                    if (!AstronautModMain.savedAstronauts.ContainsKey(part.name))
+                        AstronautModMain.savedAstronauts[part.name] = new List<string>();
                     foreach (string name in names)
                     {
-                        if (!AstronautUnlockerMod.savedAstronauts[part.name].Contains(name))
+                        if (!AstronautModMain.savedAstronauts[part.name].Contains(name))
                         {
-                            AstronautUnlockerMod.savedAstronauts[part.name].Add(name);
+                            AstronautModMain.savedAstronauts[part.name].Add(name);
                             changed = true;
                         }
                     }
                 }
-                if (changed) AstronautUnlockerMod.SaveEvaConfig();
+                if (changed) AstronautModMain.SaveEvaConfig();
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1688", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1688", e);
             }
         }
     }
 
-    // --- 正常退出世界清空 savedAstronauts ---
-    // 离开世界（新建火箭 / 返回中心 / 主菜单）即进入全新上下文
-    // 清空可防止此前捕获的（可能已死亡）乘员被自动恢复到新建造中
     [HarmonyPatch(typeof(GameManager), "ExitToBuild")]
     public class Patch_GameManager_ExitToBuild_ClearSaved
     {
         static void Prefix()
         {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToBuild");
+            AstronautModMain.ClearSavedAstronauts("ExitToBuild");
         }
     }
 
@@ -571,7 +546,7 @@ namespace AstronautUnlocker
     {
         static void Prefix()
         {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToHub");
+            AstronautModMain.ClearSavedAstronauts("ExitToHub");
         }
     }
 
@@ -580,13 +555,10 @@ namespace AstronautUnlocker
     {
         static void Prefix()
         {
-            AstronautUnlockerMod.ClearSavedAstronauts("ExitToMainMenu");
+            AstronautModMain.ClearSavedAstronauts("ExitToMainMenu");
         }
     }
 
-    // --- 回退到建造也复活 ---
-    // RevertToBuild 不走 LoadSave 而是用 deleteRevert=true 持久化发射快照
-    // 此处同样复活 使回退撤销死亡 正常保存/退出（deleteRevert=false）保持死亡
     [HarmonyPatch(typeof(SavingCache), "SaveWorldPersistent")]
     public class Patch_SavingCache_SaveWorldPersistent_ReviveOnRevertBuild
     {
@@ -610,7 +582,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1746", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1746", e);
             }
         }
     }
@@ -629,7 +601,7 @@ namespace AstronautUnlocker
                 }
                 catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1765", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1765", e);
             }
                 AstronautManager.DestroyEVA(__instance, death: true);
                 return false; // 跳过原 StartDeathAnimation
@@ -727,7 +699,6 @@ namespace AstronautUnlocker
 
                 AstronautState.State state = NativeAstronautUI.SafeGetAstronautState(astronautName);
                 
-
                 if (state == AstronautState.State.Available)
                 {
                     
@@ -794,7 +765,6 @@ namespace AstronautUnlocker
                         return false;
                     }
 
-                    
                     astronautRef.Value = "";
                     bool externalSeat2 = tr.Field<bool>("externalSeat").Value;
                     if (externalSeat2)
@@ -836,8 +806,6 @@ namespace AstronautUnlocker
 
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
-
-                
 
                 // 从 crew_Build（建造）或 crew_World（世界）移除
                 if (AstronautState.main != null)
@@ -884,7 +852,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 1986", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 1986", e);
             }
         }
     }
@@ -918,7 +886,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2017", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2017", e);
             }
             return true;
         }
@@ -941,21 +909,15 @@ namespace AstronautUnlocker
             try
             {
 
-
-
-
                 EVAControlRecovery.Attach(__result);
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2044", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2044", e);
             }
         }
     }
 
-    // EndMissionMenu 检查 HasCrew 为 true 会强制销毁流程（无法回收）
-    // 本模组在 PC 端启用乘员 座椅有名字导致 HasCrew=true 阻止回收
-    // 补丁返回 false 以走正常回收/销毁流程
     [HarmonyPatch(typeof(CrewModule), "get_HasCrew")]
     public class Patch_CrewModule_HasCrew
     {
@@ -1046,7 +1008,7 @@ namespace AstronautUnlocker
                             try { dm.Detach(data); }
                             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2093", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2093", e);
             }
                         });
                         patchedParts.Add(id);
@@ -1061,7 +1023,7 @@ namespace AstronautUnlocker
                             try { sm.Split(data); }
                             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2108", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2108", e);
             }
                         });
                         patchedParts.Add(id);
@@ -1120,7 +1082,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2167", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2167", e);
             }
         }
     }
@@ -1164,7 +1126,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2211", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2211", e);
             }
         }
     }
@@ -1191,7 +1153,7 @@ namespace AstronautUnlocker
                 }
 
                 bool hasControl = disableAstronauts ||
-                    AstronautUnlockerMod.allowUncrewedControl || anyHasAstronaut;
+                    AstronautModMain.allowUncrewedControl || anyHasAstronaut;
 
                 var hasControlRef = tr.Field("hasControl")
                     .GetValue<SFS.Variables.Bool_Reference>();
@@ -1230,13 +1192,6 @@ namespace AstronautUnlocker
         }
     }
 
-    // ============================================================
-    // Bug 1: 发射后火箭"消失"且地图视图锁死在太阳
-    // SpawnBlueprint 只把拥有控制权（hasControl）的火箭设为玩家；
-    // 若没有这样的火箭而 rockets 又为空，玩家目标会是 null，
-    // 摄像机停在原点（太阳）且火箭无法被追踪 —— 看起来就是火箭消失了。
-    // 这里在生成结束后强制修正控制权、玩家目标与地图目标。
-    // ============================================================
     [HarmonyPatch(typeof(RocketManager), "SpawnBlueprint")]
     public class Patch_RocketManager_SpawnBlueprint_EnsurePlayer
     {
@@ -1304,19 +1259,6 @@ namespace AstronautUnlocker
                 // 控制权交由 SFS 原生逻辑（探测器核心的 ControlModule 默认自带控制权）。
                 if (crews.Length == 0) return;
 
-                // 关键修复：火箭控制权 = 各部件控制权的“逻辑或”（Rocket.Awake 中
-                // hasControl 由所有 ControlModule.hasControl 取 Any 得出）。
-                //
-                // 旧实现把火箭上【所有】ControlModule.hasControl 统一设成同一个值：
-                // 只要存在一个空座位（CrewModule 存在、无宇航员、且未开启无人控制），
-                // 就会把探测器核心等原生控制部件的 hasControl 一并清零，于是火箭丢失控制权。
-                // 首启时该空座位的 CrewModule 尚未注入（crews.Length==0 提前返回），所以仍有控制；
-                // 重启后 CrewModule 已从存档恢复，于是被清零 —— 与上报现象完全吻合。
-                //
-                // 新实现只管理“带 CrewModule 的部件”（乘员/宇航员舱），按该部件自身座位占用
-                // 决定其控制权；探测器/指令舱等【只带 ControlModule、不带 CrewModule】的原生
-                // 控制部件保留其原生控制权，绝不被空座位规则清零。这样只要火箭上任意部件有
-                // 控制权，整箭就有控制权，与部件遍历顺序无关。
                 foreach (ControlModule control in controls)
                 {
                     if (control == null || control.hasControl == null) continue;
@@ -1334,7 +1276,7 @@ namespace AstronautUnlocker
                         foreach (CrewModule.Seat seat in crew.seats)
                             if (seat != null && seat.HasAstronaut) partOccupied++;
 
-                    bool partShouldControl = partOccupied > 0 || AstronautUnlockerMod.allowUncrewedControl;
+                    bool partShouldControl = partOccupied > 0 || AstronautModMain.allowUncrewedControl;
                     control.hasControl.Value = partShouldControl;
                 }
             }
@@ -1480,7 +1422,7 @@ namespace AstronautUnlocker
                             }
                             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2329", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2329", e);
             }
                         },
                         CloseMode.Current));
@@ -1496,7 +1438,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2345", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2345", e);
             }
         }
     }

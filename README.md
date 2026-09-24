@@ -66,6 +66,22 @@
 
 ## 更新日志 / Changelog
 
+### 【v3.9.3 更新 / v3.9.3 Update】
+
+- **修复：三类每帧异常（共约 7700 次）**
+  - ① 缺少可选依赖 Custom Save Data 时，保存桥接层每帧抛 `FileNotFoundException`。已重写为纯反射桥接（含 DynamicMethod 事件代理），未安装该依赖时静默停用；已安装则功能照常。
+  - ② 游戏原生 `FlightInfoDrawer.Update` 用 `Split(':')[1]` 取值，本地化串缺冒号时每帧数组越界。已由模组安全接管，缺失分隔符时退化为整串显示。
+  - ③ 游戏原生 `LocationDrawer.Update` 的 `Substring(0, IndexOf(":"))` 在同样场景下抛 `ArgumentOutOfRangeException`。已同样安全接管，俯仰角箭头逻辑照常驱动。
+  **Fixed: ① the Custom Save Data bridge spammed `FileNotFoundException` every frame when the optional dependency was missing — rewritten as a pure-reflection bridge that silently disables itself; ② the native `FlightInfoDrawer.Update` crashed with `IndexOutOfRangeException` when the localized string lacked a colon — taken over with safe slicing; ③ the native `LocationDrawer.Update` threw `ArgumentOutOfRangeException` for the same reason — taken over as well, pitch-angle logic preserved.**
+
+- **修复：回发射后残留的已销毁宇航员引用被误判为 EVA**
+  C# 的 `is Astronaut_EVA` 对已销毁对象仍返回 true，导致：发射时错误显示 EVA 遥测仪表盘、进入 EVA 时按键提醒不出现、插旗/传送按键静默失败。所有"玩家是否 EVA"的判断已改为 Unity 重载的 `!= null`（销毁对象视为 null）。此外：按键未配置/设置未就绪时回退默认键位；非 EVA 状态按键会给出明确提示。
+  **Fixed: C# `is Astronaut_EVA` still matches destroyed astronaut objects left in `player.Value` after reverting to launch — the dashboard wrongly appeared during launch, the EVA key reminder never fired, and flag/teleport keys silently failed. All EVA checks now use Unity's overloaded `!= null`. Keys also fall back to defaults when settings are unavailable, and pressing them outside EVA shows a clear hint.**
+
+- **变更：移除插旗/传送悬浮按钮，改为可配置快捷键（默认 F / G）**
+  在 游戏设置 → Keybindings → Astronaut Mod 分区可自定义（支持 Shift/Ctrl/Alt 修饰键与鼠标键，Esc 取消）。进入 EVA 时通过消息栏提醒一次当前按键；设置界面的绑定行同时显示动作名与键值。
+  **Changed: the "Plant Flag" / "Teleport" floating buttons are removed in favor of configurable keybinds (defaults F / G) under Settings → Keybindings → Astronaut Mod (modifier keys and mouse buttons supported, Esc to cancel). Entering EVA shows a one-time key reminder; binding rows now display both the action name and the key.**
+
 ### 【v3.9.2 更新 / v3.9.2 Update】
 
 本次更新修复"重载模组后世界 / 蓝图页面出问题"与"宇航员(EVA)仪表盘消失"两大回归，并改进发射前"缺失宇航员"提示为可选择的双按钮。

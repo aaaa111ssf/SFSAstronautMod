@@ -11,23 +11,9 @@ using SFS.UI;
 using SFS.World;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
-    /// <summary>
     /// Pre-launch check for the "missing astronaut" case, with an English-only warning.
-    ///
-    /// Context: this mod injects the native CrewModule into custom capsules and hands control
-    /// to our own RefreshRocketControl logic (any occupied crew seat / "Allow control without crew"
-    /// counts as control). But once the mod is uninstalled the native CrewModule falls back to
-    /// "empty seat => no control", so a pure crew-capsule rocket (no command pod / probe core)
-    /// launches uncontrollable / cannot launch.
-    ///
-    /// This patches BuildManager.Launch: if the rocket has crew capsules that are all empty and has
-    /// no other control source (native ControlModule with control, an occupied crew seat, or
-    /// "Allow control without crew"), it shows an English-only warning with two choices:
-    ///   - "Continue Anyway": ignore the warning and launch as-is (player accepts the no-control risk);
-    ///   - "Cancel": close the prompt without launching.
-    /// </summary>
     [HarmonyPatch(typeof(BuildManager), "Launch")]
     public class Patch_BuildManager_Launch_MissingAstronautWarning
     {
@@ -74,7 +60,7 @@ namespace AstronautUnlocker
                 bool anyOccupiedCrew = crews.Any(c =>
                     c.seats != null && c.seats.Any(s => s != null && s.HasAstronaut));
 
-                bool allowUncrewed = AstronautUnlockerMod.allowUncrewedControl;
+                bool allowUncrewed = AstronautModMain.allowUncrewedControl;
 
                 // 存在任一控制来源：原生发射 + 模组控制逻辑会保证可控，正常放行
                 if (hasNativeControl || anyOccupiedCrew || allowUncrewed) return true;

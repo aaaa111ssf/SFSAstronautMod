@@ -25,7 +25,7 @@ using UnityEngine.UI;
 using ModGUIButton = SFS.UI.ModGUI.Button;
 using ModGUIBuilder = SFS.UI.ModGUI.Builder;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     public class UpdateDriver : MonoBehaviour
     {
@@ -107,11 +107,13 @@ namespace AstronautUnlocker
             CustomSaveBridge.Ensure();
 
             timer += Time.deltaTime;
+
+            // EVA 快捷键（插旗/传送）必须每帧检测 0.5s 定时器会漏按键
+            EvaKeys.Update();
+
             if (timer >= 0.5f)
             {
                 timer = 0f;
-                PlantFlagButtonHelper.Update();
-                TeleportButtonHelper.Update();
                 AstronautDashboardHelper.Update();
             }
 
@@ -146,8 +148,8 @@ namespace AstronautUnlocker
                     pendingCrewCapacityPart = null;
                     refreshMenuAfterCrewCapacityApply = false;
                     crewCapacityApplyTimer = -1f;
-                    if (part != null && AstronautUnlockerMod.ApplyCrewCapacity(part) && refreshMenu)
-                        AstronautUnlockerMod.ReopenPartMenu(part);
+                    if (part != null && AstronautModMain.ApplyCrewCapacity(part) && refreshMenu)
+                        AstronautModMain.ReopenPartMenu(part);
                 }
             }
 
@@ -207,7 +209,7 @@ namespace AstronautUnlocker
                             }
                         }
                         bool hasControl = DevSettings.DisableAstronauts ||
-                            AstronautUnlockerMod.allowUncrewedControl || anyHasAstronaut;
+                            AstronautModMain.allowUncrewedControl || anyHasAstronaut;
 
                         var hasControlRef = tr.Field("hasControl")
                             .GetValue<SFS.Variables.Bool_Reference>();
@@ -315,7 +317,7 @@ namespace AstronautUnlocker
             HashSet<string> names = new HashSet<string>(persistentEvaDutyNames);
             try
             {
-                AstronautUnlockerMod.EnsureAllStateLists();
+                AstronautModMain.EnsureAllStateLists();
                 foreach (string name in AstronautState.main.crew_Build)
                     if (!string.IsNullOrEmpty(name)) names.Add(name);
                 foreach (WorldSave.Astronauts.Crew_World crew in AstronautState.main.state.crew_World)
@@ -353,7 +355,7 @@ namespace AstronautUnlocker
 
         private static void SynchronizeActiveEVAState()
         {
-            AstronautUnlockerMod.EnsureAllStateLists();
+            AstronautModMain.EnsureAllStateLists();
         }
 
         private static bool IsAstronautOnDuty(string astronautName)
@@ -502,7 +504,7 @@ namespace AstronautUnlocker
                         if (!string.IsNullOrWhiteSpace(name))
                         {
                             AstronautState.main.CreateAstronaut(name);
-                            AstronautUnlockerMod.PersistAstronautStateToCache();
+                            AstronautModMain.PersistAstronautStateToCache();
                             if (reopenAssignMenu && pendingSeat != null)
                             {
                                 ShowMenu(pendingSeat, pendingRedraw);
@@ -582,7 +584,7 @@ namespace AstronautUnlocker
                             AstronautState.main.state.eva.RemoveAll(e => e.astronautName == name);
                         AstronautState.main.FireAstronaut(name);
 
-                        AstronautUnlockerMod.PersistAstronautStateToCache();
+                        AstronautModMain.PersistAstronautStateToCache();
 
                         UpdateDriver.ScheduleMenuRefresh();
                     });
@@ -597,7 +599,7 @@ namespace AstronautUnlocker
         {
             try
             {
-                AstronautUnlockerMod.EnsureAllStateLists();
+                AstronautModMain.EnsureAllStateLists();
                 return AstronautState.main.GetAstronautState(astronautName);
             }
             catch (Exception e)

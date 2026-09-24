@@ -1,31 +1,25 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using SFS.Builds;
 using SFS.Parts;
 using SFS.World;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
-    /// <summary>
     /// Optional bridge to the "Custom Save Data" dependency mod.
-    ///
-    /// The primary fix relies on the part's own variables (see <see cref="CrewPersistence"/>), which
-    /// already travels inside blueprints, rocket saves and world saves. This bridge adds the requested
-    /// redundancy: every mod capsule also writes its crew layout into the blueprint's custom data and
-    /// into the world save's custom data. If anything upstream fails to restore a part, the data can be
-    /// recovered from there.
-    ///
-    /// Everything here is defensive: when Custom Save Data is not installed the bridge simply does
-    /// nothing and the mod keeps working.
-    /// </summary>
     public static class CustomSaveBridge
     {
         // 实例标识复用 CrewPersistence 的命名 保证被一视同仁地持久化
         public const string IdVariable = CrewPersistence.IdVariable;
         public const string BlueprintKey = "astronautmod_crew";
         public const string WorldFile = "AstronautMod.json";
+
+        const string EntrypointTypeName = "CustomSaveData.Entrypoint, CustomSaveData";
 
         public class CrewEntry
         {
@@ -43,6 +37,9 @@ namespace AstronautUnlocker
         static bool unavailable;
         static int idCounter;
 
+        // 反射缓存（订阅成功时初始化）
+        static MethodInfo bpAdd, bpRemove, bpGetGeneric, wsAdd, wsRemove, wsGetGeneric;
+
         /// <summary>Whether the Custom Save Data dependency is usable right now.</summary>
         public static bool Available
         {
@@ -54,45 +51,18 @@ namespace AstronautUnlocker
         {
             if (subscribed || unavailable)
                 return;
-            Subscribe();
-        }
 
-        static bool IsDependencyPresent()
-        {
+            // 双保险：即使 Subscribe 内部出现意料之外的类型加载失败，
+            // 也在这里捕获并置 unavailable，保证绝不每帧重试刷日志。
             try
             {
-                return Type.GetType("CustomSaveData.Entrypoint, CustomSaveData") != null;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        static void Subscribe()
-        {
-            try
-            {
-                if (!IsDependencyPresent())
-                    return;
-
-                if (CustomSaveData.Entrypoint.Main == null)
-                    return; // 依赖模组尚未完成 Early_Load 下一帧再试
-
-                CustomSaveData.Entrypoint.BlueprintHelper.OnSave += OnBlueprintSave;
-                CustomSaveData.Entrypoint.BlueprintHelper.OnLoad += OnBlueprintLoad;
-                CustomSaveData.Entrypoint.BlueprintHelper.OnLaunch += OnBlueprintLaunch;
-                CustomSaveData.Entrypoint.WorldSaveHelper.OnSave += OnWorldSave;
-                CustomSaveData.Entrypoint.WorldSaveHelper.OnLoad += OnWorldLoad;
-
-                subscribed = true;
-                ModLogger.Info("Custom Save Data bridge enabled");
+                Subscribe();
             }
             catch (TypeLoadException)
             {
                 unavailable = true;
             }
-            catch (System.IO.FileNotFoundException)
+            catch (FileNotFoundException)
             {
                 unavailable = true;
             }
@@ -101,6 +71,122 @@ namespace AstronautUnlocker
                 ModLogger.ErrorOnce("Custom Save Data subscribe", e);
                 unavailable = true;
             }
+        }
+
+        static void Subscribe()
+        {
+            Type entrypointType = Type.GetType(EntrypointTypeName);
+            if (entrypointType == null)
+            {
+                unavailable = true; // 依赖模组未安装 本桥接永久停用
+                return;
+            }
+
+            const BindingFlags StaticFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            object main = GetStaticProperty(entrypointType, "Main");
+            if (main == null)
+                return; // 依赖模组尚未完成 Early_Load 下一帧再试
+
+            object blueprintHelper = GetStaticProperty(entrypointType, "BlueprintHelper");
+            object worldSaveHelper = GetStaticProperty(entrypointType, "WorldSaveHelper");
+            if (blueprintHelper == null || worldSaveHelper == null)
+            {
+                unavailable = true;
+                return;
+            }
+
+            Type blueprintHelperType = blueprintHelper.GetType();
+            Type worldSaveHelperType = worldSaveHelper.GetType();
+
+            // 事件代理：Action<CustomBlueprint> / Action<CustomBlueprint, Rocket[], Part[]> /
+            // Action<CustomWorldSave> 全部由 DynamicMethod 生成 与本模组无编译期耦合
+            SubscribeEvent(blueprintHelperType, blueprintHelper, "OnSave", nameof(OnBlueprintSaveProxy));
+            SubscribeEvent(blueprintHelperType, blueprintHelper, "OnLoad", nameof(OnBlueprintLoadProxy));
+            SubscribeEvent(blueprintHelperType, blueprintHelper, "OnLaunch", nameof(OnBlueprintLaunchProxy));
+            SubscribeEvent(worldSaveHelperType, worldSaveHelper, "OnSave", nameof(OnWorldSaveProxy));
+            SubscribeEvent(worldSaveHelperType, worldSaveHelper, "OnLoad", nameof(OnWorldLoadProxy));
+
+            // 缓存 CustomBlueprint / CustomWorldSave 上的 AddCustomData / GetCustomData / RemoveCustomData
+            Type blueprintType = AccessTools.TypeByName("CustomSaveData.CustomBlueprint");
+            Type worldSaveType = AccessTools.TypeByName("CustomSaveData.CustomWorldSave");
+            if (blueprintType != null)
+            {
+                bpAdd = AccessTools.Method(blueprintType, "AddCustomData");
+                bpRemove = AccessTools.Method(blueprintType, "RemoveCustomData");
+                bpGetGeneric = AccessTools.Method(blueprintType, "GetCustomData");
+            }
+            if (worldSaveType != null)
+            {
+                wsAdd = AccessTools.Method(worldSaveType, "AddCustomData");
+                wsRemove = AccessTools.Method(worldSaveType, "RemoveCustomData");
+                wsGetGeneric = AccessTools.Method(worldSaveType, "GetCustomData");
+            }
+
+            subscribed = true;
+            ModLogger.Info("Custom Save Data bridge enabled");
+        }
+
+        static object GetStaticProperty(Type type, string name)
+        {
+            try
+            {
+                PropertyInfo prop = type.GetProperty(name,
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                return prop != null ? prop.GetValue(null, null) : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static void SubscribeEvent(Type helperType, object helper, string eventName, string proxyName)
+        {
+            try
+            {
+                EventInfo evt = helperType.GetEvent(eventName,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (evt == null)
+                    return;
+
+                MethodInfo handler = typeof(CustomSaveBridge).GetMethod(proxyName,
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                if (handler == null)
+                    return;
+
+                evt.AddEventHandler(helper, CreateProxy(evt.EventHandlerType, handler));
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Custom Save Data event " + eventName, e);
+            }
+        }
+
+    /// 生成与依赖模组事件签名完全匹配的静态代理委托：
+        static Delegate CreateProxy(Type delegateType, MethodInfo handler)
+        {
+            MethodInfo invoke = delegateType.GetMethod("Invoke");
+            ParameterInfo[] pars = invoke.GetParameters();
+            Type[] paramTypes = new Type[pars.Length];
+            for (int i = 0; i < pars.Length; i++)
+                paramTypes[i] = pars[i].ParameterType;
+
+            DynamicMethod dm = new DynamicMethod(
+                "AstronautBridge_" + handler.Name,
+                invoke.ReturnType, paramTypes,
+                typeof(CustomSaveBridge).Module, skipVisibility: true);
+
+            ILGenerator il = dm.GetILGenerator();
+            for (int i = 0; i < paramTypes.Length; i++)
+            {
+                il.Emit(OpCodes.Ldarg, (short)i);
+                if (paramTypes[i].IsValueType)
+                    il.Emit(OpCodes.Box, paramTypes[i]);
+            }
+            il.Emit(OpCodes.Call, handler);
+            il.Emit(OpCodes.Ret);
+
+            return dm.CreateDelegate(delegateType);
         }
 
         // ---------------------------------------------------------------- identity
@@ -141,7 +227,7 @@ namespace AstronautUnlocker
             foreach (Part part in parts)
             {
                 if (part == null) continue;
-                if (!AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID())) continue;
+                if (!AstronautModMain.injectedPartIds.Contains(part.GetInstanceID())) continue;
 
                 CrewModule crew = part.GetComponentInChildren<CrewModule>(true);
                 if (crew == null) continue;
@@ -173,18 +259,54 @@ namespace AstronautUnlocker
                 CrewPersistence.Import(part, entry.capacity, entry.crew);
 
                 if (part.GetComponentInChildren<CrewModule>(true) != null)
-                    AstronautUnlockerMod.ReimportCrewFromVariables(part);
+                    AstronautModMain.ReimportCrewFromVariables(part);
                 else
                 {
-                    AstronautUnlockerMod.InjectCrewModule(part);
-                    AstronautUnlockerMod.ClearModuleCache(part);
+                    AstronautModMain.InjectCrewModule(part);
+                    AstronautModMain.ClearModuleCache(part);
                 }
             }
         }
 
-        // ---------------------------------------------------------------- blueprint
+        // ---------------------------------------------------------------- custom data helpers
 
-        static void OnBlueprintSave(CustomSaveData.CustomBlueprint blueprint)
+        static void AddCustomData(object container, string key, CrewSnapshot snapshot)
+        {
+            // blueprint 与 world save 的 AddCustomData(string, object) 签名一致 按容器实际类型分派
+            MethodInfo mi = (container.GetType().Name == "CustomWorldSave") ? wsAdd : bpAdd;
+            if (mi == null) return;
+            mi.Invoke(container, new object[] { key, snapshot });
+        }
+
+        static void RemoveCustomData(object container, string key)
+        {
+            MethodInfo mi = (container.GetType().Name == "CustomWorldSave") ? wsRemove : bpRemove;
+            if (mi == null) return;
+            mi.Invoke(container, new object[] { key });
+        }
+
+        static bool TryGetCustomData(object container, string key, out CrewSnapshot snapshot)
+        {
+            snapshot = null;
+            MethodInfo generic = (container.GetType().Name == "CustomWorldSave") ? wsGetGeneric : bpGetGeneric;
+            if (generic == null) return false;
+            try
+            {
+                MethodInfo closed = generic.MakeGenericMethod(typeof(CrewSnapshot));
+                object[] args = { key, null };
+                bool ok = (bool)closed.Invoke(container, args);
+                if (ok) snapshot = args[1] as CrewSnapshot;
+                return ok && snapshot != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // ---------------------------------------------------------------- event proxies
+
+        static void OnBlueprintSaveProxy(object blueprint)
         {
             try
             {
@@ -195,10 +317,10 @@ namespace AstronautUnlocker
                 CrewSnapshot snapshot = SnapshotOf(parts);
                 if (snapshot.parts.Count == 0)
                 {
-                    blueprint.RemoveCustomData(BlueprintKey);
+                    RemoveCustomData(blueprint, BlueprintKey);
                     return;
                 }
-                blueprint.AddCustomData(BlueprintKey, snapshot);
+                AddCustomData(blueprint, BlueprintKey, snapshot);
             }
             catch (Exception e)
             {
@@ -206,12 +328,12 @@ namespace AstronautUnlocker
             }
         }
 
-        static void OnBlueprintLoad(CustomSaveData.CustomBlueprint blueprint)
+        static void OnBlueprintLoadProxy(object blueprint)
         {
             try
             {
                 CrewSnapshot snapshot;
-                if (!blueprint.GetCustomData(BlueprintKey, out snapshot))
+                if (!TryGetCustomData(blueprint, BlueprintKey, out snapshot))
                     return;
 
                 Part[] parts = null;
@@ -226,14 +348,14 @@ namespace AstronautUnlocker
             }
         }
 
-        static void OnBlueprintLaunch(CustomSaveData.CustomBlueprint blueprint, Rocket[] rockets, Part[] parts)
+        static void OnBlueprintLaunchProxy(object blueprint, object rockets, object parts)
         {
             try
             {
                 CrewSnapshot snapshot;
-                if (!blueprint.GetCustomData(BlueprintKey, out snapshot))
+                if (!TryGetCustomData(blueprint, BlueprintKey, out snapshot))
                     return;
-                ApplySnapshot(parts, snapshot);
+                ApplySnapshot(parts as Part[], snapshot);
             }
             catch (Exception e)
             {
@@ -245,7 +367,7 @@ namespace AstronautUnlocker
 
         static CrewSnapshot lastWorldSnapshot;
 
-        static void OnWorldSave(CustomSaveData.CustomWorldSave save)
+        static void OnWorldSaveProxy(object worldSave)
         {
             try
             {
@@ -255,13 +377,13 @@ namespace AstronautUnlocker
                 {
                     if (crew == null) continue;
                     Part part = Traverse.Create(crew).Field("part").GetValue<Part>();
-                    if (part != null && AstronautUnlockerMod.injectedPartIds.Contains(part.GetInstanceID()))
+                    if (part != null && AstronautModMain.injectedPartIds.Contains(part.GetInstanceID()))
                         parts.Add(part);
                 }
 
                 CrewSnapshot snapshot = SnapshotOf(parts);
                 if (snapshot.parts.Count > 0)
-                    save.AddCustomData(WorldFile, snapshot);
+                    AddCustomData(worldSave, WorldFile, snapshot);
 
                 lastWorldSnapshot = snapshot;
             }
@@ -271,12 +393,12 @@ namespace AstronautUnlocker
             }
         }
 
-        static void OnWorldLoad(CustomSaveData.CustomWorldSave save)
+        static void OnWorldLoadProxy(object worldSave)
         {
             try
             {
                 CrewSnapshot snapshot;
-                if (save != null && save.GetCustomData(WorldFile, out snapshot))
+                if (worldSave != null && TryGetCustomData(worldSave, WorldFile, out snapshot))
                     lastWorldSnapshot = snapshot;
             }
             catch (Exception e)
@@ -307,11 +429,6 @@ namespace AstronautUnlocker
             {
                 ModLogger.ErrorOnce("World recovery", e);
             }
-        }
-
-        static IEnumerable<Part> FindSceneParts()
-        {
-            return UnityEngine.Object.FindObjectsOfType<Part>(true);
         }
     }
 }

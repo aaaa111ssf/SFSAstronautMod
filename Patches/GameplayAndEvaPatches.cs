@@ -25,7 +25,7 @@ using UnityEngine.UI;
 using ModGUIButton = SFS.UI.ModGUI.Button;
 using ModGUIBuilder = SFS.UI.ModGUI.Builder;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     [HarmonyPatch(typeof(EngineModule), "Start")]
     public class Patch_EngineModule_Start
@@ -208,7 +208,7 @@ namespace AstronautUnlocker
                     }
                     catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3550", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3550", e);
             }
 
                     if (name.Contains("Fuel") || name.Contains("Tank") ||
@@ -223,7 +223,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3562", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3562", e);
             }
         }
     }
@@ -277,7 +277,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3616", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3616", e);
             }
             return true;
         }
@@ -370,9 +370,6 @@ namespace AstronautUnlocker
                         rotate = false;
                     }
 
-
-
-
                     eva.physics.PhysicsMode = false;
                     eva.physics.SetLocationAndState(targetLocation, physicsMode: false);
                     eva.physics.PhysicsMode = true;
@@ -413,24 +410,164 @@ namespace AstronautUnlocker
         {
             try
             {
-                bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
-                if (!evaSelected) return true;
-
-
+                // 用 Unity 重载 != null 判断：C# `is` 对已销毁的宇航员对象仍返回 true
+                Astronaut_EVA eva = PlayerController.main != null
+                    ? PlayerController.main.player?.Value as Astronaut_EVA
+                    : null;
+                bool evaSelected = eva != null;
+                if (!evaSelected)
+                {
+                    SafeUpdate(__instance);
+                    return false;
+                }
 
                 if (__instance != null && __instance.menuHolder != null)
                     __instance.menuHolder.SetActive(false);
-                if (__instance != null && __instance.timewarpText != null)
+                if (__instance != null && __instance.timewarpText != null && WorldTime.main != null)
                     __instance.timewarpText.Text = WorldTime.main.timewarpSpeed + "x";
                 return false;
             }
-            catch
+            catch (Exception e)
             {
-                return true;
+                ModLogger.ErrorOnce("FlightInfoDrawer safe update", e);
+                return false; // 已接管 出错也不回退到会崩溃的原方法
             }
+        }
+
+        // 复刻 FlightInfoDrawer.Update 原逻辑 分隔符缺失时退化为整串显示
+        static void SafeUpdate(FlightInfoDrawer d)
+        {
+            if (d == null) return;
+
+            if (PlayerController.main != null && PlayerController.main.player.Value is Rocket rocket)
+            {
+                if (d.menuHolder != null) d.menuHolder.SetActive(true);
+
+                float mass = rocket.rb2d.mass;
+                float thrust = rocket.partHolder.GetModules<EngineModule>()
+                        .Sum(a => a.thrust.Value * a.throttle_Out.Value)
+                    + rocket.partHolder.GetModules<BoosterModule>()
+                        .Sum(b => b.thrustVector.Value.magnitude * b.throttle_Out.Value);
+
+                if (d.massText != null)
+                    d.massText.Text = ValueAfterColon(mass.ToMassString(true));
+                if (d.thrustText != null)
+                    d.thrustText.Text = ValueAfterColon(thrust.ToThrustString());
+                if (d.thrustToWeightText != null)
+                    d.thrustToWeightText.Text = ValueAfterColon((thrust / mass).ToTwrString());
+                if (d.partCountText != null)
+                    d.partCountText.Text = rocket.partHolder.parts.Count.ToString();
+            }
+            else
+            {
+                if (d.massText != null)
+                    d.massText.Text = ValueAfterColon(0f.ToMassString(true));
+                if (d.thrustText != null)
+                    d.thrustText.Text = ValueAfterColon(0f.ToThrustString());
+                if (d.thrustToWeightText != null)
+                    d.thrustToWeightText.Text = ValueAfterColon(0f.ToTwrString());
+                if (d.partCountText != null)
+                    d.partCountText.Text = 0.ToString();
+            }
+
+            if (d.timewarpText != null && WorldTime.main != null)
+                d.timewarpText.Text = WorldTime.main.timewarpSpeed + "x";
+        }
+
+        /// <summary>取本地化串冒号后的值段 缺冒号时返回整串（原版此处会数组越界）。</summary>
+        internal static string ValueAfterColon(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            int i = s.IndexOf(':');
+            return i < 0 ? s : s.Substring(i + 1);
         }
     }
 
+    [HarmonyPatch(typeof(LocationDrawer), "Update")]
+    public class Patch_LocationDrawer_SafeText
+    {
+        static MethodInfo getIdealAngle;
+
+        static bool Prefix(LocationDrawer __instance)
+        {
+            try
+            {
+                SafeUpdate(__instance);
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("LocationDrawer safe update", e);
+            }
+            return false; // 完全接管
+        }
+
+        static void SafeUpdate(LocationDrawer d)
+        {
+            if (d == null) return;
+
+            Location location = (PlayerController.main != null && PlayerController.main.player.Value != null)
+                ? PlayerController.main.player.Value.location.Value
+                : WorldView.main.ViewLocation;
+            SelectableObject target = Map.navigation != null ? Map.navigation.target : null;
+
+            string text;
+            string text2;
+            if (target is MapRocket && (location.position - target.Location.position).Mag_LessThan(10000.0))
+            {
+                text = Loc.main.Velocity_Relative_Horizontal
+                    .Inject((location.velocity - target.Location.velocity).magnitude.ToVelocityString(), "speed");
+                text2 = Loc.main.Distance_Relative_Horizontal
+                    .Inject((location.position - target.Location.position).magnitude.ToDistanceString(), "distance");
+            }
+            else
+            {
+                text = Loc.main.Velocity_Horizontal
+                    .Inject(location.velocity.magnitude.ToVelocityString(), "speed");
+                double terrainHeight = location.GetTerrainHeight(true);
+                text2 = (!(terrainHeight < 2000.0) && !(location.Height < 500.0))
+                    ? Loc.main.Height_Horizontal.Inject(location.Height.ToDistanceString(), "height")
+                    : Loc.main.Height_Terrain_Horizontal.Inject(terrainHeight.ToDistanceString(), "height");
+            }
+
+            // GetIdealAngle 是原版 private static，供俯仰角箭头使用 必须照常驱动
+            if (getIdealAngle == null)
+                getIdealAngle = AccessTools.Method(typeof(LocationDrawer), "GetIdealAngle");
+            if (getIdealAngle != null)
+            {
+                object[] args = { false, 0.0, 0.0 };
+                getIdealAngle.Invoke(null, args);
+                d.currentAngleInfo = new AngleInfo((bool)args[0], (double)args[1], (double)args[2]);
+            }
+
+            SplitTitleValue(text2, out string heightTitle, out string heightValue);
+            if (d.heightTitle != null) d.heightTitle.Text = heightTitle;
+            if (d.heightText != null) d.heightText.Text = heightValue;
+
+            SplitTitleValue(text, out string velocityTitle, out string velocityValue);
+            if (d.velocityTitle != null) d.velocityTitle.Text = velocityTitle;
+            if (d.velocityText != null) d.velocityText.Text = velocityValue;
+        }
+
+        static void SplitTitleValue(string s, out string title, out string value)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                title = "";
+                value = "";
+                return;
+            }
+            int i = s.IndexOf(':');
+            if (i < 0)
+            {
+                // 本地化串没有分隔符：标题留空 值取整串（原版此处 Substring(0, -1) 崩溃）
+                title = "";
+                value = s;
+                return;
+            }
+            title = s.Substring(0, i);
+            value = s.Substring(i).Replace(": ", "");
+        }
+    }
 
     public static class EVAStatsPanelHider
     {
@@ -439,7 +576,11 @@ namespace AstronautUnlocker
 
         public static void LateUpdate()
         {
-            bool evaSelected = PlayerController.main?.player?.Value is Astronaut_EVA;
+            // 用 Unity 重载 != null：已销毁的宇航员引用不算 EVA
+            Astronaut_EVA eva = PlayerController.main != null
+                ? PlayerController.main.player?.Value as Astronaut_EVA
+                : null;
+            bool evaSelected = eva != null;
             if (!evaSelected) { cachedDrawers = null; return; }
 
             if (cachedDrawers == null || cachedDrawers.Length == 0 || cachedDrawers[0] == null)
@@ -453,68 +594,8 @@ namespace AstronautUnlocker
         }
     }
 
-    public static class TeleportButtonHelper
-    {
-        private static ModGUIButton teleportButton;
-        private static GameObject teleportBtnHolder;
-
-        public static void Update()
-        {
-            try
-            {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
-
-                bool cheatsAllowed = false;
-                try
-                {
-                    cheatsAllowed = Base.worldBase != null && Base.worldBase.AllowsCheats;
-                }
-                catch (Exception e)
-            {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3806", e);
-            }
-
-                if (isEVA && cheatsAllowed && teleportButton == null)
-                {
-                    teleportBtnHolder = ModGUIBuilder.CreateHolder(
-                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_TeleportBtn");
-                    teleportButton = ModGUIBuilder.CreateButton(
-                        teleportBtnHolder.transform, 150, 50,
-                        450, -200,
-                        () =>
-                        {
-                            try
-                            {
-                                if (TeleportMenu.main != null)
-                                {
-                                    TeleportMenu.main.OpenFromCheats();
-                                }
-                                else
-                                {
-                                    
-                                }
-                            }
-                            catch (Exception e)
-            {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3828", e);
-            }
-                        },
-                        "Teleport");
-                }
-                else if ((!isEVA || !cheatsAllowed) && teleportButton != null)
-                {
-                    if (teleportBtnHolder != null)
-                        UnityEngine.Object.Destroy(teleportBtnHolder);
-                    teleportButton = null;
-                    teleportBtnHolder = null;
-                }
-            }
-            catch (Exception e)
-            {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3843", e);
-            }
-        }
-    }
+    // 原 TeleportButtonHelper 已移除：传送改为可配置按键（见 FlagAndUiPatches.EvaKeys），
+    // 按键在游戏设置 Keybindings 的 Astronaut Mod 分区自定义。
 
     public static class AstronautDashboardHelper
     {
@@ -526,7 +607,12 @@ namespace AstronautUnlocker
         {
             try
             {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
+                // 用 Unity 重载 != null：已销毁的宇航员引用（回发射后残留）不算 EVA，
+                // 否则仪表盘会在发射时错误显示、EVA 期间提醒/按键状态错乱
+                Astronaut_EVA liveEva = PlayerController.main != null
+                    ? PlayerController.main.player?.Value as Astronaut_EVA
+                    : null;
+                bool isEVA = liveEva != null;
 
                 // 遥测面板总开关（可在游戏设置里关闭）
                 bool showDash = ModSettings.main != null && ModSettings.main.settings != null
@@ -551,21 +637,20 @@ namespace AstronautUnlocker
                     dashboardHolder = null;
                 }
 
-                if (isEVA && showDash && dashboardLabel != null &&
-                    PlayerController.main?.player?.Value is Astronaut_EVA eva)
+                if (isEVA && showDash && dashboardLabel != null && liveEva != null)
                 {
                     updateTimer += Time.deltaTime;
                     // 刷新间隔由游戏设置里的 Telemetry refresh rate（Hz）决定，默认 20Hz
                     if (updateTimer >= ModSettings.TelemetryRefreshInterval())
                     {
                         updateTimer = 0f;
-                        UpdateTelemetry(eva, dashboardLabel);
+                        UpdateTelemetry(liveEva, dashboardLabel);
                     }
                 }
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3892", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3892", e);
             }
         }
 
@@ -594,7 +679,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3921", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3921", e);
             }
         }
     }
@@ -612,11 +697,8 @@ namespace AstronautUnlocker
                 // 仅在建造/世界模式显示（非部件选择界面）
                 if (!settings.build && !settings.game) return;
 
-                bool hasNativeCrew = AstronautUnlockerMod.HasNativeCrewModule(__instance);
+                bool hasNativeCrew = AstronautModMain.HasNativeCrewModule(__instance);
 
-                // 注入 CrewModule 前必须要求 ControlModule：
-                // 这是为了防止玩家把宇航员塞进邮箱（mailbox）、配重块这类非载人部件。
-                // 不要放宽这个限制。
                 bool canHostCrew = __instance.HasModule<ControlModule>();
 
                 string partName = __instance.name;
@@ -632,34 +714,34 @@ namespace AstronautUnlocker
                     {
                         try
                         {
-                            bool currentEnabled = AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                                                   AstronautUnlockerMod.evaConfig[partName];
+                            bool currentEnabled = AstronautModMain.evaConfig.ContainsKey(partName) &&
+                                                   AstronautModMain.evaConfig[partName];
                             bool newEnabled = !currentEnabled;
-                            AstronautUnlockerMod.evaConfig[partName] = newEnabled;
-                            AstronautUnlockerMod.SaveEvaConfig();
+                            AstronautModMain.evaConfig[partName] = newEnabled;
+                            AstronautModMain.SaveEvaConfig();
 
                             if (newEnabled)
                             {
-                                AstronautUnlockerMod.InjectCrewModule(capturedPart);
+                                AstronautModMain.InjectCrewModule(capturedPart);
                             }
                             else
                             {
-                                AstronautUnlockerMod.RemoveCrewModule(capturedPart);
+                                AstronautModMain.RemoveCrewModule(capturedPart);
                             }
 
                             // 清模块缓存使 HasModule<CrewModule> 返回正确结果
-                            AstronautUnlockerMod.ClearModuleCache(capturedPart);
+                            AstronautModMain.ClearModuleCache(capturedPart);
 
                             // 不关闭/重开菜单 避免菜单箭头因坐标问题"瞬移"
                             // getValue 回调会在下次重绘时自动反映新状态
                         }
                         catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 3979", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 3979", e);
             }
                     },
-                    () => AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                           AstronautUnlockerMod.evaConfig[partName],
+                    () => AstronautModMain.evaConfig.ContainsKey(partName) &&
+                           AstronautModMain.evaConfig[partName],
                     null, null);
                 }
 
@@ -668,8 +750,8 @@ namespace AstronautUnlocker
                 {
                     drawer.DrawButton(-501,
                         () => "Crew Capacity",
-                        () => AstronautUnlockerMod.GetCrewCapacity(partName) + " / 5",
-                        () => AstronautUnlockerMod.OpenCrewCapacityMenu(capturedPart),
+                        () => AstronautModMain.GetCrewCapacity(partName) + " / 5",
+                        () => AstronautModMain.OpenCrewCapacityMenu(capturedPart),
                         () => true,
                         null, null);
                 }
@@ -695,7 +777,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 4000", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 4000", e);
             }
         }
     }
@@ -711,7 +793,7 @@ namespace AstronautUnlocker
                 // 只有模组注入的载入舱支持可变容量 原生座椅保留真实单座位行为
                 if (__instance.HasModule<CrewModule>())
                 {
-                    if (AstronautUnlockerMod.injectedPartIds.Contains(__instance.GetInstanceID()))
+                    if (AstronautModMain.injectedPartIds.Contains(__instance.GetInstanceID()))
                         UpdateDriver.ScheduleCrewCapacityApply(__instance, refreshMenu: false);
                     return;
                 }
@@ -722,19 +804,19 @@ namespace AstronautUnlocker
                 // 部件自带持久化乘员配置时也必须注入（重启/回退后仍能恢复）
                 bool storedConfig = CrewPersistence.HasStoredConfig(__instance);
                 if (storedConfig)
-                    AstronautUnlockerMod.evaConfig[partName] = true;
+                    AstronautModMain.evaConfig[partName] = true;
 
-                if (AstronautUnlockerMod.evaConfig.ContainsKey(partName) &&
-                    AstronautUnlockerMod.evaConfig[partName])
+                if (AstronautModMain.evaConfig.ContainsKey(partName) &&
+                    AstronautModMain.evaConfig[partName])
                 {
-                    AstronautUnlockerMod.InjectCrewModule(__instance);
-                    AstronautUnlockerMod.ClearModuleCache(__instance);
+                    AstronautModMain.InjectCrewModule(__instance);
+                    AstronautModMain.ClearModuleCache(__instance);
                     UpdateDriver.ScheduleCrewCapacityApply(__instance, refreshMenu: false);
                 }
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 4033", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 4033", e);
             }
         }
     }
@@ -754,9 +836,6 @@ namespace AstronautUnlocker
         }
     }
 
-    // 发射前把注入部件座椅上的乘员名存入 savedAstronauts
-    // 注入的 CrewModule 不在部件 JSON 中 PartSave.CreateSaves() 不会序列化座椅乘员
-    // 需手动保存并在世界场景重注入时恢复
     [HarmonyPatch(typeof(BuildManager), "Launch")]
     public class Patch_BuildManager_Launch_SaveAstronauts
     {
@@ -773,7 +852,7 @@ namespace AstronautUnlocker
                 foreach (Part part in partsHolder.parts)
                 {
                     int partId = part.GetInstanceID();
-                    if (!AstronautUnlockerMod.injectedPartIds.Contains(partId)) continue;
+                    if (!AstronautModMain.injectedPartIds.Contains(partId)) continue;
 
                     // 注入部件 保存其乘员名
                     CrewModule crew = part.GetComponentInChildren<CrewModule>(true);
@@ -795,17 +874,17 @@ namespace AstronautUnlocker
 
                     if (savedList.Count > 0)
                     {
-                        AstronautUnlockerMod.savedAstronauts[part.name] = savedList;
+                        AstronautModMain.savedAstronauts[part.name] = savedList;
                         
                     }
                 }
 
                 // 持久化到 JSON 场景重载后仍保留
-                AstronautUnlockerMod.SaveEvaConfig();
+                AstronautModMain.SaveEvaConfig();
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 4099", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 4099", e);
             }
         }
     }

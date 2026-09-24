@@ -1,0 +1,6 @@
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautUnlocker.csproj.AssemblyReference.cache
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautUnlocker.GeneratedMSBuildEditorConfig.editorconfig
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautUnlocker.csproj.CoreCompileInputs.cache
+D:\zm\ugu\记得\SFSAstronautMod-main\bin\Release\netstandard2.1\AstronautUnlocker.deps.json
+D:\zm\ugu\记得\SFSAstronautMod-main\bin\Release\netstandard2.1\AstronautUnlocker.dll
+D:\zm\ugu\记得\SFSAstronautMod-main\obj\Release\netstandard2.1\AstronautUnlocker.dll

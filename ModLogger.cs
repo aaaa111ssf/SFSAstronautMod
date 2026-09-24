@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     internal static class ModLogger
     {

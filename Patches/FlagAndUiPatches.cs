@@ -25,7 +25,7 @@ using UnityEngine.UI;
 using ModGUIButton = SFS.UI.ModGUI.Button;
 using ModGUIBuilder = SFS.UI.ModGUI.Builder;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     [HarmonyPatch(typeof(AstronautManager), "SpawnFlag")]
     public class Patch_AstronautManager_SpawnFlag
@@ -55,7 +55,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2378", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2378", e);
             }
         }
     }
@@ -71,7 +71,7 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2391", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2391", e);
             }
         }
     }
@@ -100,7 +100,6 @@ namespace AstronautUnlocker
                     mapIcon.SetRotation(holder.rotation.eulerAngles.z + 90f);
                 }
 
-                
                 return false;
             }
             catch (Exception e)
@@ -130,15 +129,13 @@ namespace AstronautUnlocker
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2447", e);
+                ModLogger.ErrorOnce("AstronautModMain.cs line 2447", e);
             }
             return true;
         }
 
         static void Postfix()
         {
-
-
 
             FlagCustomization.CancelPendingPlant();
         }
@@ -173,7 +170,6 @@ namespace AstronautUnlocker
             SpriteRenderer sr = holderObj.AddComponent<SpriteRenderer>();
             sr.sprite = GetFlagSprite();
             sr.color = new Color(0.9f, 0.2f, 0.2f, 1f);
-
 
             sr.sortingOrder = -1;
             holderObj.transform.localScale = new Vector3(0.3f, 0.6f, 1f);
@@ -242,52 +238,180 @@ namespace AstronautUnlocker
         }
     }
 
-    public static class PlantFlagButtonHelper
+    /// EVA 快捷键处理（替代原“Plant Flag / Teleport”悬浮按钮，按钮已按需求移除）。
+    public static class EvaKeys
     {
-        private static ModGUIButton plantFlagButton;
-        private static GameObject flagBtnHolder;
+        private static bool wasEva;
+
+        // 消息栏不可用时的兜底提示（屏幕底部临时标签）
+        private static GameObject hintHolder;
+        private static SFS.UI.ModGUI.Label hintLabel;
+        private static float hintUntil = -1f;
 
         public static void Update()
         {
+            CleanupExpiredHint();
+
+            Astronaut_EVA eva = null;
             try
             {
-                bool isEVA = PlayerController.main?.player?.Value is Astronaut_EVA;
+                if (PlayerController.main != null)
+                    eva = PlayerController.main.player?.Value as Astronaut_EVA;
+            }
+            catch { }
 
-                bool hasSolidSurface = true;
-                if (isEVA)
+            bool isEva = eva != null; // Unity 重载：已销毁对象 == null
+
+            if (!isEva)
+            {
+                wasEva = false;
+            }
+            else if (!wasEva)
+            {
+                wasEva = true;
+                ShowReminder();
+            }
+
+            int plantModifier;
+            KeyCode plantKey;
+            int teleportModifier;
+            KeyCode teleportKey;
+            GetBindings(out plantModifier, out plantKey, out teleportModifier, out teleportKey);
+
+            try
+            {
+                if (KeyPressed(plantModifier, plantKey))
                 {
-                    Astronaut_EVA eva = PlayerController.main.player.Value as Astronaut_EVA;
-                    hasSolidSurface = PlanetSurfaceHelper.IsSolidPlanet(eva);
+                    if (isEva)
+                    {
+                        // PlantFlag 内部自带“此处不能插旗 / 附近已有旗”等提示
+                        if (AstronautManager.main != null)
+                            AstronautManager.main.PlantFlag();
+                        else
+                            Hint("Plant Flag unavailable in this scene.");
+                    }
+                    else
+                    {
+                        Hint("Plant Flag only works during EVA. (Press: " +
+                            ModSettings.ComboName(plantModifier, plantKey) + ")");
+                    }
                 }
 
-                if (isEVA && hasSolidSurface && plantFlagButton == null)
+                if (KeyPressed(teleportModifier, teleportKey))
                 {
-                    flagBtnHolder = ModGUIBuilder.CreateHolder(
-                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_FlagBtn");
-                    plantFlagButton = ModGUIBuilder.CreateButton(
-                        flagBtnHolder.transform, 150, 50,
-                        450, -250,
-                        () =>
-                        {
-                            if (AstronautManager.main != null)
-                            {
-                                AstronautManager.main.PlantFlag();
-                            }
-                        },
-                        "Plant Flag");
-                }
-                else if ((!isEVA || !hasSolidSurface) && plantFlagButton != null)
-                {
-                    if (flagBtnHolder != null)
-                        UnityEngine.Object.Destroy(flagBtnHolder);
-                    plantFlagButton = null;
-                    flagBtnHolder = null;
+                    bool cheatsAllowed = false;
+                    try { cheatsAllowed = Base.worldBase != null && Base.worldBase.AllowsCheats; }
+                    catch { }
+
+                    if (!cheatsAllowed)
+                        Hint("Teleport requires cheats to be enabled in this world.");
+                    else if (TeleportMenu.main != null)
+                        TeleportMenu.main.OpenFromCheats();
+                    else
+                        Hint("Teleport menu unavailable.");
                 }
             }
             catch (Exception e)
             {
-                ModLogger.ErrorOnce("AstronautUnlockerMod.cs line 2603", e);
+                ModLogger.ErrorOnce("EVA key action", e);
             }
+        }
+
+        private static void GetBindings(out int plantModifier, out KeyCode plantKey,
+            out int teleportModifier, out KeyCode teleportKey)
+        {
+            // 设置未就绪时退回默认键位，保证按键始终有响应
+            plantModifier = 0;
+            plantKey = KeyCode.F;
+            teleportModifier = 0;
+            teleportKey = KeyCode.G;
+
+            ModSettings.Data settings = ModSettings.main != null ? ModSettings.main.settings : null;
+            if (settings == null) return;
+
+            plantModifier = settings.plantFlagModifier;
+            plantKey = settings.plantFlagKey;
+            teleportModifier = settings.teleportModifier;
+            teleportKey = settings.teleportKey;
+        }
+
+        private static void ShowReminder()
+        {
+            int plantModifier;
+            KeyCode plantKey;
+            int teleportModifier;
+            KeyCode teleportKey;
+            GetBindings(out plantModifier, out plantKey, out teleportModifier, out teleportKey);
+
+            Hint("EVA keys - Plant Flag: " +
+                ModSettings.ComboName(plantModifier, plantKey) +
+                "   |   Teleport: " +
+                ModSettings.ComboName(teleportModifier, teleportKey));
+        }
+
+        private static void Hint(string message)
+        {
+            try
+            {
+                if (MsgDrawer.main != null)
+                {
+                    MsgDrawer.main.Log(message);
+                    return;
+                }
+            }
+            catch { }
+
+            // 消息栏不可用（如某些场景）时退回到屏幕底部临时标签
+            try
+            {
+                if (hintLabel == null || hintHolder == null)
+                {
+                    hintHolder = ModGUIBuilder.CreateHolder(
+                        ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_KeyHint");
+                    hintLabel = ModGUIBuilder.CreateLabel(hintHolder.transform,
+                        620, 30, 0, -300, message);
+                    hintLabel.Color = new Color(1f, 1f, 1f, 0.95f);
+                }
+                else
+                {
+                    hintLabel.Text = message;
+                }
+                hintUntil = Time.unscaledTime + 5f;
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("EVA key hint fallback", e);
+            }
+        }
+
+        private static void CleanupExpiredHint()
+        {
+            if (hintLabel == null || hintHolder == null) return;
+            if (hintUntil > 0f && Time.unscaledTime > hintUntil)
+            {
+                UnityEngine.Object.Destroy(hintHolder);
+                hintHolder = null;
+                hintLabel = null;
+            }
+        }
+
+        // 修饰键必须精确匹配，避免“想按 F 却因挂着 Alt 误触其他绑定”
+        private static bool KeyPressed(int modifier, KeyCode key)
+        {
+            if (key == KeyCode.None) return false;
+
+            bool alt = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            switch (modifier)
+            {
+                case 1: if (!shift) return false; break;
+                case 2: if (!ctrl) return false; break;
+                case 3: if (!alt) return false; break;
+                default: if (alt || ctrl || shift) return false; break;
+            }
+            return Input.GetKeyDown(key);
         }
     }
 }

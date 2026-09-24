@@ -13,7 +13,7 @@ using SFS.World;
 using SFS.WorldBase;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
     // 保存自定义旗帜外观
     public static class FlagCustomization
@@ -22,17 +22,31 @@ namespace AstronautUnlocker
         private const float PendingPlantLifetime = 5f;
 
         [Serializable]
-        private class FlagStyle
+        internal class FlagStyle
         {
             public string colorHex = "#FFFFFF";
             public string imageFile = "";
+
+            // 贴图在旗面上的偏移（旗面本地坐标单位）与缩放倍率，由旗帜编辑器拖放/调节
+            public float offsetX = 0f;
+            public float offsetY = 0f;
+            public float imageScale = 1f;
+
+            // 旗杆颜色与粗细（自定义旗面时叠加的旗杆）
+            public string poleColorHex = "#141414";
+            public float poleWidthScale = 1f;   // 0.4~2
 
             public FlagStyle Clone()
             {
                 return new FlagStyle
                 {
                     colorHex = colorHex ?? "#FFFFFF",
-                    imageFile = imageFile ?? ""
+                    imageFile = imageFile ?? "",
+                    offsetX = offsetX,
+                    offsetY = offsetY,
+                    imageScale = imageScale,
+                    poleColorHex = poleColorHex ?? "#141414",
+                    poleWidthScale = poleWidthScale
                 };
             }
 
@@ -402,7 +416,7 @@ namespace AstronautUnlocker
                 planetCode, position.x, position.y, direction);
         }
 
-        private static void ApplyStyle(Flag flag, FlagStyle style)
+        internal static void ApplyStyle(Flag flag, FlagStyle style)
         {
             if (flag == null) return;
             if (style == null || !style.IsCustom())
@@ -418,7 +432,6 @@ namespace AstronautUnlocker
             if (!originalSprites.ContainsKey(id)) originalSprites[id] = renderer.sprite;
             if (!originalColors.ContainsKey(id)) originalColors[id] = renderer.color;
 
-
             renderer.sprite = originalSprites[id];
             renderer.color = originalColors[id];
             Sprite customFace = null;
@@ -432,10 +445,9 @@ namespace AstronautUnlocker
             if (customFace != null)
             {
                 renderer.enabled = false;
-                ConfigureArtworkRenderer(renderer, customFace, customTint);
+                ConfigureArtworkRenderer(renderer, customFace, customTint, style);
                 return;
             }
-
 
             RemoveArtworkRenderer(id);
             renderer.enabled = true;
@@ -456,7 +468,8 @@ namespace AstronautUnlocker
                 renderer.color = originalColor;
         }
 
-        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint)
+        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint,
+            FlagStyle style)
         {
             int id = frameRenderer.GetInstanceID();
             if (!artworkRenderers.TryGetValue(id, out SpriteRenderer artwork) || artwork == null)
@@ -478,28 +491,38 @@ namespace AstronautUnlocker
             float imageWidth = Mathf.Max(0.0001f, image.bounds.size.x);
             float imageHeight = Mathf.Max(0.0001f, image.bounds.size.y);
 
-
-            float availableWidth = frameWidth * 0.98f;
-            float availableHeight = frameHeight * 0.34f;
+            float poleWidth = Mathf.Max(0.015f, frameWidth * 0.07f);
+            float clothLeft = frameBounds.min.x + poleWidth * 1.15f;
+            float availableWidth = Mathf.Max(0.0001f, (frameBounds.max.x - clothLeft) * 0.98f);
+            float availableHeight = Mathf.Max(0.0001f, frameHeight * 0.34f);
             bool preserveOutline = HasTransparentOutline(image) ||
                 Mathf.Abs((imageWidth / imageHeight) - (availableWidth / availableHeight)) > 0.20f;
             float uniformScale = preserveOutline
                 ? Mathf.Min(availableWidth / imageWidth, availableHeight / imageHeight)
                 : Mathf.Max(availableWidth / imageWidth, availableHeight / imageHeight);
 
+            // 编辑器拖放/缩放
+            float userScale = style == null ? 1f : Mathf.Clamp(style.imageScale, 0.25f, 3f);
+            uniformScale *= userScale;
+            Vector2 userOffset = style == null ? Vector2.zero
+                : new Vector2(
+                    Mathf.Clamp(style.offsetX, -5f, 5f),
+                    Mathf.Clamp(style.offsetY, -5f, 5f));
+
             FlagArtworkOrientation orientation = artwork.GetComponent<FlagArtworkOrientation>();
             if (orientation == null) orientation = artwork.gameObject.AddComponent<FlagArtworkOrientation>();
             orientation.SetBaseScale(uniformScale, uniformScale);
             Vector3 facePosition = new Vector3(
-                frameBounds.center.x,
-                frameBounds.max.y - availableHeight * 0.5f,
+                clothLeft + availableWidth * 0.5f + userOffset.x,
+                frameBounds.max.y - availableHeight * 0.5f + userOffset.y,
                 0f);
             artwork.transform.localPosition = facePosition;
             artwork.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
             ConfigureFaceMask(id, frameRenderer, artwork.sortingOrder, availableWidth,
                 availableHeight, facePosition);
-            ConfigureBlackPole(id, frameRenderer, frameBounds, availableHeight,
-                facePosition);
+            float poleWidthScale = style == null ? 1f : Mathf.Clamp(style.poleWidthScale, 0.4f, 2f);
+            ConfigureBlackPole(id, frameRenderer, frameBounds, poleWidth * poleWidthScale,
+                style == null ? Color.black : ParseColor(style.poleColorHex, Color.black));
             artwork.enabled = true;
         }
 
@@ -542,7 +565,7 @@ namespace AstronautUnlocker
         }
 
         private static void ConfigureBlackPole(int rendererId, SpriteRenderer frameRenderer,
-            Bounds frameBounds, float faceHeight, Vector3 facePosition)
+            Bounds frameBounds, float poleWidth, Color poleColor)
         {
             if (!poleRenderers.TryGetValue(rendererId, out SpriteRenderer pole) || pole == null)
             {
@@ -552,18 +575,15 @@ namespace AstronautUnlocker
                 poleRenderers[rendererId] = pole;
             }
 
-
-            float poleWidth = Mathf.Max(0.015f, frameBounds.size.x * 0.07f);
-
             float poleTop = frameBounds.max.y;
             float poleBottom = frameBounds.min.y;
             float poleHeight = Mathf.Max(0.01f, poleTop - poleBottom);
             float poleCenterY = (poleBottom + poleTop) * 0.5f;
-            float poleCenterX = facePosition.x - (frameBounds.size.x * 0.49f) +
-                poleWidth * 0.55f;
+            // 旗杆固定贴在旗面包围盒左缘（本地坐标的杆侧），不随图面偏移
+            float poleCenterX = frameBounds.min.x + poleWidth * 0.55f;
 
             pole.sprite = GetFlagFaceMaskSprite();
-            pole.color = Color.black;
+            pole.color = poleColor;
             pole.sortingLayerID = frameRenderer.sortingLayerID;
             pole.sortingOrder = frameRenderer.sortingOrder + 1;
             pole.maskInteraction = SpriteMaskInteraction.None;
@@ -667,7 +687,6 @@ namespace AstronautUnlocker
             string primaryPath = Path.Combine(FlagsDirectory, fileName);
             if (File.Exists(primaryPath)) return primaryPath;
 
-
             string legacyPath = Path.Combine(LegacyFlagsDirectory, fileName);
             return File.Exists(legacyPath) ? legacyPath : null;
         }
@@ -765,7 +784,6 @@ namespace AstronautUnlocker
             catch { }
         }
     }
-
 
     public sealed class FlagArtworkOrientation : MonoBehaviour
     {

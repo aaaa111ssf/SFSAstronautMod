@@ -6,12 +6,9 @@ using SFS.UI;
 using TMPro;
 using UnityEngine;
 
-namespace AstronautUnlocker
+namespace AstronautMod
 {
-    /// <summary>
     /// 把模组配置放进游戏自带的设置系统（与 ModsSettings / KeybindingsPC 同款机制）。
-    /// 文件落在游戏设置文件夹下的 AstronautModSettings.json。
-    /// </summary>
     public class ModSettings : SettingsBase<ModSettings.Data>
     {
         [Serializable]
@@ -24,6 +21,12 @@ namespace AstronautUnlocker
             public bool allowUncrewedControl = false;
             public bool showTelemetryDashboard = true;      // EVA 遥测面板总开关
             public int telemetryRefreshHz = 20;             // 遥测刷新频率（Hz），1..120
+
+            // EVA 快捷键（替代原插旗/传送悬浮按钮）：修饰键同上 0=None
+            public int plantFlagModifier = 0;
+            public KeyCode plantFlagKey = KeyCode.F;        // 默认 F
+            public int teleportModifier = 0;
+            public KeyCode teleportKey = KeyCode.G;         // 默认 G
         }
 
         public static ModSettings main;
@@ -77,9 +80,15 @@ namespace AstronautUnlocker
         public static string BindingDisplayName()
         {
             if (main?.settings == null) return "Alt + LMB";
-            string mod = ModifierName(main.settings.crewMenuModifier);
-            string key = KeyName(main.settings.crewMenuKey);
-            return mod.Length > 0 ? mod + " + " + key : key;
+            return ComboName(main.settings.crewMenuModifier, main.settings.crewMenuKey);
+        }
+
+        /// <summary>修饰键 + 主键 的显示名（如 "F"、"Alt + G"）。</summary>
+        public static string ComboName(int modifier, KeyCode key)
+        {
+            string mod = ModifierName(modifier);
+            string k = KeyName(key);
+            return mod.Length > 0 ? mod + " + " + k : k;
         }
 
         public static string BindingHint()
@@ -102,10 +111,7 @@ namespace AstronautUnlocker
         public static readonly int[] TelemetryHzPresets = { 5, 10, 20, 30, 60 };
     }
 
-    /// <summary>
     /// 自定义按键绑定行：游戏原生 KeybindingsPC.Key 只支持 Ctrl + 键，无法表达 Alt / 鼠标键，
-    /// 因此这里用一格与游戏风格一致的行，捕获 修饰键(Alt/Shift/Ctrl/None) + 主键(含鼠标) 并写入 ModSettings。
-    /// </summary>
     public class CrewMenuKeyBinder : MonoBehaviour
     {
         private ButtonPC button;
@@ -115,7 +121,9 @@ namespace AstronautUnlocker
         private void Awake()
         {
             button = GetComponentInChildren<ButtonPC>(true);
-            text = GetComponentInChildren<TMP_Text>(true);
+            // 行内有两段文本：texts[0]=动作名（不能覆盖） texts[1]=当前键值
+            TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
+            text = texts.Length > 1 ? texts[1] : texts[0];
             if (button != null)
                 button.onClick += (Action)(() => BeginCapture());
             Refresh();
@@ -181,9 +189,87 @@ namespace AstronautUnlocker
         }
     }
 
-    /// <summary>
+    /// 通用按键绑定行（捕获 修饰键(Alt/Shift/Ctrl/None) + 主键(含鼠标) 并回调写入任意配置项）。
+    public class ModKeyBinder : MonoBehaviour
+    {
+        private ButtonPC button;
+        private TMP_Text text;
+        private bool capturing;
+        private Action<int, KeyCode> apply;
+        private Func<string> display;
+
+        /// <summary>必须在 AddComponent 之后、捕获开始前调用。</summary>
+        public void Setup(Action<int, KeyCode> applyBinding, Func<string> displayValue)
+        {
+            apply = applyBinding;
+            display = displayValue;
+            Refresh();
+        }
+
+        private void Start()
+        {
+            button = GetComponentInChildren<ButtonPC>(true);
+            // 行内有两段文本：texts[0]=动作名（不能覆盖） texts[1]=当前键值
+            TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
+            text = texts.Length > 1 ? texts[1] : texts[0];
+            if (button != null)
+                button.onClick += (Action)(() =>
+                {
+                    capturing = true;
+                    if (text != null) text.text = "-";
+                });
+            Refresh();
+        }
+
+        private void Update()
+        {
+            if (!capturing) return;
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                capturing = false;
+                Refresh();
+                return;
+            }
+
+            KeyCode captured = CaptureAnyKey();
+            if (captured != KeyCode.None)
+            {
+                apply?.Invoke(CurrentModifier(), captured);
+                capturing = false;
+                Refresh();
+            }
+        }
+
+        private static KeyCode CaptureAnyKey()
+        {
+            if (Input.GetKeyDown(KeyCode.Mouse0)) return KeyCode.Mouse0;
+            if (Input.GetKeyDown(KeyCode.Mouse1)) return KeyCode.Mouse1;
+            if (Input.GetKeyDown(KeyCode.Mouse2)) return KeyCode.Mouse2;
+            foreach (KeyCode k in Enum.GetValues(typeof(KeyCode)))
+            {
+                if (k == KeyCode.Mouse0 || k == KeyCode.Mouse1 || k == KeyCode.Mouse2) continue;
+                if (k != KeyCode.Escape && Input.GetKeyDown(k))
+                    return k;
+            }
+            return KeyCode.None;
+        }
+
+        private static int CurrentModifier()
+        {
+            if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)) return 3;
+            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) return 2;
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) return 1;
+            return 0;
+        }
+
+        private void Refresh()
+        {
+            if (text != null && display != null) text.text = display();
+        }
+    }
+
     /// 在游戏设置界面的 Keybindings 列表末尾追加一行 "Open Astronaut Menu" 自定义绑定。
-    /// </summary>
     [HarmonyPatch(typeof(KeybindingsPC), "Awake")]
     public class Patch_KeybindingsPC_Awake
     {
@@ -243,12 +329,47 @@ namespace AstronautUnlocker
                             d.telemetryRefreshHz = presets[(idx + 1) % presets.Length];
                             ModSettings.main.SaveSettings();
                         });
+
+                    AddKeybindRow(__instance, "Plant Flag (EVA)",
+                        (mod, key) =>
+                        {
+                            d.plantFlagModifier = mod;
+                            d.plantFlagKey = key;
+                            ModSettings.main.SaveSettings();
+                        },
+                        () => ModSettings.ComboName(d.plantFlagModifier, d.plantFlagKey));
+
+                    AddKeybindRow(__instance, "Teleport (EVA)",
+                        (mod, key) =>
+                        {
+                            d.teleportModifier = mod;
+                            d.teleportKey = key;
+                            ModSettings.main.SaveSettings();
+                        },
+                        () => ModSettings.ComboName(d.teleportModifier, d.teleportKey));
                 }
             }
             catch (Exception e)
             {
                 ModLogger.ErrorOnce("Keybindings injection", e);
             }
+        }
+
+        // 按键绑定行：点击后捕获 修饰键 + 主键（Esc 取消）
+        private static void AddKeybindRow(KeybindingsPC instance, string label,
+            Action<int, KeyCode> apply, Func<string> display)
+        {
+            GameObject row = UnityEngine.Object.Instantiate(instance.keybindingPrefab, instance.keybindingsHolder);
+            if (row == null) return;
+
+            TMP_Text[] texts = row.GetComponentsInChildren<TMP_Text>(true);
+            if (texts.Length > 0) texts[0].text = label;
+
+            KeyBinder native = row.GetComponentInChildren<KeyBinder>(true);
+            if (native != null) UnityEngine.Object.Destroy(native);
+
+            ModKeyBinder binder = row.AddComponent<ModKeyBinder>();
+            binder.Setup(apply, display);
         }
 
         // 复用 keybindingPrefab 的行布局：左侧动作名 + 右侧 ButtonPC 显示当前值。
