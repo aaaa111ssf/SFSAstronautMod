@@ -66,6 +66,16 @@
 
 ## 更新日志 / Changelog
 
+### 【v3.9.4 更新 / v3.9.4 Update】
+- **修复：无EVA仍能传送**
+  **Fix: Can teleport even without EVA**
+- **增强：EVA 遥测仪表盘**
+  EVA 时显示行星 / 速度 / 垂直速度 / 高度 / 燃料  
+  **Enhanced: the EVA dashboard shows planet / speed / vertical speed / altitude / fuel **
+- **变更：自定义旗帜简化**
+  从 `Mods/AstronautMod/Flags` 的 PNG/JPG **点选**贴图（免手输名字）
+  **Changed:click-to-pick images from `Mods/AstronautMod/Flags` (no filename typing)**
+
 ### 【v3.9.3 更新 / v3.9.3 Update】
 
 - **修复：三类每帧异常（共约 7700 次）**
