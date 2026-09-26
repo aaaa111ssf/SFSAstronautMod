@@ -305,26 +305,30 @@ namespace AstronautMod
 
                 if (ModSettings.main?.settings != null)
                 {
-                    ModSettings.Data d = ModSettings.main.settings;
-
                     AddSettingRow(__instance, "Allow control without crew",
-                        () => d.allowUncrewedControl ? "On" : "Off", () =>
+                        () => CurrentSettings().allowUncrewedControl ? "On" : "Off", () =>
                         {
+                            ModSettings.Data d = CurrentSettings();
+                            if (d == null) return;
                             d.allowUncrewedControl = !d.allowUncrewedControl;
                             ModSettings.main.SaveSettings();
                         });
 
                     AddSettingRow(__instance, "EVA telemetry dashboard",
-                        () => d.showTelemetryDashboard ? "On" : "Off", () =>
+                        () => CurrentSettings().showTelemetryDashboard ? "On" : "Off", () =>
                         {
+                            ModSettings.Data d = CurrentSettings();
+                            if (d == null) return;
                             d.showTelemetryDashboard = !d.showTelemetryDashboard;
                             ModSettings.main.SaveSettings();
                         });
 
                     int[] presets = ModSettings.TelemetryHzPresets;
                     AddSettingRow(__instance, "Telemetry refresh rate",
-                        () => d.telemetryRefreshHz + " Hz", () =>
+                        () => CurrentSettings().telemetryRefreshHz + " Hz", () =>
                         {
+                            ModSettings.Data d = CurrentSettings();
+                            if (d == null) return;
                             int idx = System.Array.IndexOf(presets, d.telemetryRefreshHz);
                             d.telemetryRefreshHz = presets[(idx + 1) % presets.Length];
                             ModSettings.main.SaveSettings();
@@ -333,26 +337,47 @@ namespace AstronautMod
                     AddKeybindRow(__instance, "Plant Flag (EVA)",
                         (mod, key) =>
                         {
+                            ModSettings.Data d = CurrentSettings();
+                            if (d == null) return;
                             d.plantFlagModifier = mod;
                             d.plantFlagKey = key;
                             ModSettings.main.SaveSettings();
                         },
-                        () => ModSettings.ComboName(d.plantFlagModifier, d.plantFlagKey));
+                        () =>
+                        {
+                            ModSettings.Data d = CurrentSettings();
+                            return d == null ? "F" : ModSettings.ComboName(d.plantFlagModifier, d.plantFlagKey);
+                        });
 
                     AddKeybindRow(__instance, "Teleport (EVA)",
                         (mod, key) =>
                         {
+                            ModSettings.Data d = CurrentSettings();
+                            if (d == null) return;
                             d.teleportModifier = mod;
                             d.teleportKey = key;
                             ModSettings.main.SaveSettings();
                         },
-                        () => ModSettings.ComboName(d.teleportModifier, d.teleportKey));
+                        () =>
+                        {
+                            ModSettings.Data d = CurrentSettings();
+                            return d == null ? "G" : ModSettings.ComboName(d.teleportModifier, d.teleportKey);
+                        });
                 }
             }
             catch (Exception e)
             {
                 ModLogger.ErrorOnce("Keybindings injection", e);
             }
+        }
+
+        // 点击时实时取当前实例的设置对象（重载后 main 会换成新实例，不能捕获旧引用）；
+        // main 意外为空时（重载时序竞态）自愈重建设置对象
+        private static ModSettings.Data CurrentSettings()
+        {
+            if (ModSettings.main == null)
+                AstronautModMain.EnsureModSettings();
+            return ModSettings.main != null ? ModSettings.main.settings : null;
         }
 
         // 按键绑定行：点击后捕获 修饰键 + 主键（Esc 取消）

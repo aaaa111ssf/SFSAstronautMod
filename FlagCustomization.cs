@@ -22,31 +22,17 @@ namespace AstronautMod
         private const float PendingPlantLifetime = 5f;
 
         [Serializable]
-        internal class FlagStyle
+        private class FlagStyle
         {
             public string colorHex = "#FFFFFF";
             public string imageFile = "";
-
-            // 贴图在旗面上的偏移（旗面本地坐标单位）与缩放倍率，由旗帜编辑器拖放/调节
-            public float offsetX = 0f;
-            public float offsetY = 0f;
-            public float imageScale = 1f;
-
-            // 旗杆颜色与粗细（自定义旗面时叠加的旗杆）
-            public string poleColorHex = "#141414";
-            public float poleWidthScale = 1f;   // 0.4~2
 
             public FlagStyle Clone()
             {
                 return new FlagStyle
                 {
                     colorHex = colorHex ?? "#FFFFFF",
-                    imageFile = imageFile ?? "",
-                    offsetX = offsetX,
-                    offsetY = offsetY,
-                    imageScale = imageScale,
-                    poleColorHex = poleColorHex ?? "#141414",
-                    poleWidthScale = poleWidthScale
+                    imageFile = imageFile ?? ""
                 };
             }
 
@@ -97,6 +83,9 @@ namespace AstronautMod
         private static readonly Dictionary<int, SpriteRenderer> poleRenderers =
             new Dictionary<int, SpriteRenderer>();
         private static Sprite flagFaceMaskSprite;
+
+        // 几何日志去重（同一旗子+同一图只记一次）
+        private static readonly HashSet<string> geometryLogged = new HashSet<string>();
 
         private static string pendingAstronautName;
         private static FlagStyle pendingStyle;
@@ -244,8 +233,8 @@ namespace AstronautMod
                 ? "None (use color)"
                 : current.imageFile;
             elements.Add(ButtonBuilder.CreateButton(carrier,
-                () => "Set image file: " + currentImage,
-                () => OpenImageFileDialog(astronautName, onChanged),
+                () => "Select image file: " + currentImage,
+                () => OpenImagePicker(astronautName, onChanged),
                 CloseMode.Current));
             elements.Add(ButtonBuilder.CreateButton(carrier,
                 () => "Use color only",
@@ -293,39 +282,81 @@ namespace AstronautMod
                 CloseMode.Current));
         }
 
-        private static void OpenImageFileDialog(string astronautName, Action onChanged)
+        // 图片选择器：列出 Flags 目录下的 PNG/JPG，点击即选用（免手输名字），支持翻页。
+        // 选完回到样式菜单；不触发 onChanged（避免 ScheduleMenuRefresh 把宇航员菜单顶上来）。
+        private static void OpenImagePicker(string astronautName, Action onChanged, int page = 0)
         {
-            FlagStyle current = GetStyle(astronautName);
-            Menu.textInput.Open(
-                "Cancel", "Use image",
-                delegate(string[] input)
+            Initialize();
+            List<string> files = new List<string>();
+            try
+            {
+                EnsureFlagsDirectory();
+                foreach (string file in Directory.GetFiles(FlagsDirectory))
                 {
-                    string enteredName = input != null && input.Length > 0 ? input[0] : "";
-                    enteredName = (enteredName ?? "").Trim();
-                    string fileName = Path.GetFileName(enteredName);
-                    string extension = Path.GetExtension(fileName).ToLowerInvariant();
+                    string ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+                        files.Add(Path.GetFileName(file));
+                }
+                files.Sort(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Flag image picker", e);
+            }
 
-                    if (string.IsNullOrWhiteSpace(fileName) ||
-                        (extension != ".png" && extension != ".jpg" && extension != ".jpeg"))
+            List<MenuElement> elements = new List<MenuElement>();
+            SizeSyncerBuilder.Carrier carrier;
+            elements.Add(new SizeSyncerBuilder(out carrier).HorizontalMode(SizeMode.MaxChildSize));
+            elements.Add(TextBuilder.CreateText(() => "Pick an image for " + astronautName));
+            if (files.Count == 0)
+                elements.Add(TextBuilder.CreateText(() =>
+                    "No PNG/JPG found.\nPut images into:\n" + FlagsDirectory));
+
+            const int perPage = 8;
+            int totalPages = Mathf.Max(1, Mathf.CeilToInt(files.Count / (float)perPage));
+            page = Mathf.Clamp(page, 0, totalPages - 1);
+
+            foreach (string file in files.Skip(page * perPage).Take(perPage))
+            {
+                string captured = file;
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Use: " + captured,
+                    () =>
                     {
-                        Menu.read.Open(() => "Enter a PNG or JPG filename placed in:\n" + FlagsDirectory);
-                        return;
-                    }
+                        FlagStyle style = GetStyle(astronautName);
+                        style.imageFile = captured;
+                        SetStyle(astronautName, style);
+                        OpenStyleMenu(astronautName, onChanged);
+                    },
+                    CloseMode.Current));
+            }
 
-                    string fullPath = Path.Combine(FlagsDirectory, fileName);
-                    if (!File.Exists(fullPath))
-                    {
-                        Menu.read.Open(() => "Image not found:\n" + fullPath);
-                        return;
-                    }
+            if (totalPages > 1)
+            {
+                if (page > 0)
+                {
+                    int previous = page - 1;
+                    elements.Add(ButtonBuilder.CreateButton(carrier,
+                        () => "< Page " + page + " / " + totalPages,
+                        () => OpenImagePicker(astronautName, onChanged, previous),
+                        CloseMode.Current));
+                }
+                if (page < totalPages - 1)
+                {
+                    int next = page + 1;
+                    elements.Add(ButtonBuilder.CreateButton(carrier,
+                        () => "Page " + (page + 2) + " / " + totalPages + " >",
+                        () => OpenImagePicker(astronautName, onChanged, next),
+                        CloseMode.Current));
+                }
+            }
 
-                    FlagStyle style = GetStyle(astronautName);
-                    style.imageFile = fileName;
-                    SetStyle(astronautName, style);
-                    onChanged?.Invoke();
-                },
-                CloseMode.Current,
-                TextInputMenu.Element("PNG/JPG file name", current.imageFile ?? ""));
+            elements.Add(ButtonBuilder.CreateButton(carrier,
+                () => "Back",
+                () => OpenStyleMenu(astronautName, onChanged),
+                CloseMode.Current));
+
+            MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
         }
 
         private static void SetStyle(string astronautName, FlagStyle style)
@@ -416,7 +447,7 @@ namespace AstronautMod
                 planetCode, position.x, position.y, direction);
         }
 
-        internal static void ApplyStyle(Flag flag, FlagStyle style)
+        private static void ApplyStyle(Flag flag, FlagStyle style)
         {
             if (flag == null) return;
             if (style == null || !style.IsCustom())
@@ -445,7 +476,7 @@ namespace AstronautMod
             if (customFace != null)
             {
                 renderer.enabled = false;
-                ConfigureArtworkRenderer(renderer, customFace, customTint, style);
+                ConfigureArtworkRenderer(renderer, customFace, customTint);
                 return;
             }
 
@@ -468,8 +499,8 @@ namespace AstronautMod
                 renderer.color = originalColor;
         }
 
-        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint,
-            FlagStyle style)
+        // 布面从旗杆一侧起铺（贴着旗杆），不再生成在旗面包围盒正中
+        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint)
         {
             int id = frameRenderer.GetInstanceID();
             if (!artworkRenderers.TryGetValue(id, out SpriteRenderer artwork) || artwork == null)
@@ -501,29 +532,30 @@ namespace AstronautMod
                 ? Mathf.Min(availableWidth / imageWidth, availableHeight / imageHeight)
                 : Mathf.Max(availableWidth / imageWidth, availableHeight / imageHeight);
 
-            // 编辑器拖放/缩放
-            float userScale = style == null ? 1f : Mathf.Clamp(style.imageScale, 0.25f, 3f);
-            uniformScale *= userScale;
-            Vector2 userOffset = style == null ? Vector2.zero
-                : new Vector2(
-                    Mathf.Clamp(style.offsetX, -5f, 5f),
-                    Mathf.Clamp(style.offsetY, -5f, 5f));
-
             FlagArtworkOrientation orientation = artwork.GetComponent<FlagArtworkOrientation>();
             if (orientation == null) orientation = artwork.gameObject.AddComponent<FlagArtworkOrientation>();
             orientation.SetBaseScale(uniformScale, uniformScale);
             Vector3 facePosition = new Vector3(
-                clothLeft + availableWidth * 0.5f + userOffset.x,
-                frameBounds.max.y - availableHeight * 0.5f + userOffset.y,
+                clothLeft + availableWidth * 0.5f,
+                frameBounds.max.y - availableHeight * 0.5f,
                 0f);
             artwork.transform.localPosition = facePosition;
             artwork.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
             ConfigureFaceMask(id, frameRenderer, artwork.sortingOrder, availableWidth,
                 availableHeight, facePosition);
-            float poleWidthScale = style == null ? 1f : Mathf.Clamp(style.poleWidthScale, 0.4f, 2f);
-            ConfigureBlackPole(id, frameRenderer, frameBounds, poleWidth * poleWidthScale,
-                style == null ? Color.black : ParseColor(style.poleColorHex, Color.black));
+            ConfigureBlackPole(id, frameRenderer, frameBounds, availableHeight,
+                facePosition);
             artwork.enabled = true;
+
+            // 几何日志：旗子 prefab 实际布局未知，同一旗子+同一图只记一次，用于确认数值
+            string geoKey = id + "|" + availableWidth.ToString("F2") + "|" + availableHeight.ToString("F2");
+            if (geometryLogged.Add(geoKey))
+                ModLogger.Info("Flag geometry: frame='" + frameRenderer.name +
+                    "' bounds=" + frameWidth.ToString("F2") + "x" + frameHeight.ToString("F2") +
+                    " poleW=" + poleWidth.ToString("F3") +
+                    " clothLeft=" + clothLeft.ToString("F2") +
+                    " face=" + availableWidth.ToString("F2") + "x" + availableHeight.ToString("F2") +
+                    " at (" + facePosition.x.ToString("F2") + "," + facePosition.y.ToString("F2") + ")");
         }
 
         private static void RemoveArtworkRenderer(int frameRendererId)
@@ -565,7 +597,7 @@ namespace AstronautMod
         }
 
         private static void ConfigureBlackPole(int rendererId, SpriteRenderer frameRenderer,
-            Bounds frameBounds, float poleWidth, Color poleColor)
+            Bounds frameBounds, float faceHeight, Vector3 facePosition)
         {
             if (!poleRenderers.TryGetValue(rendererId, out SpriteRenderer pole) || pole == null)
             {
@@ -575,15 +607,17 @@ namespace AstronautMod
                 poleRenderers[rendererId] = pole;
             }
 
+            float poleWidth = Mathf.Max(0.015f, frameBounds.size.x * 0.07f);
+
             float poleTop = frameBounds.max.y;
             float poleBottom = frameBounds.min.y;
             float poleHeight = Mathf.Max(0.01f, poleTop - poleBottom);
             float poleCenterY = (poleBottom + poleTop) * 0.5f;
-            // 旗杆固定贴在旗面包围盒左缘（本地坐标的杆侧），不随图面偏移
-            float poleCenterX = frameBounds.min.x + poleWidth * 0.55f;
+            float poleCenterX = facePosition.x - (frameBounds.size.x * 0.49f) +
+                poleWidth * 0.55f;
 
             pole.sprite = GetFlagFaceMaskSprite();
-            pole.color = poleColor;
+            pole.color = Color.black;
             pole.sortingLayerID = frameRenderer.sortingLayerID;
             pole.sortingOrder = frameRenderer.sortingOrder + 1;
             pole.maskInteraction = SpriteMaskInteraction.None;

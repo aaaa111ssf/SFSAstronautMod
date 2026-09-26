@@ -35,7 +35,7 @@ namespace AstronautMod
         public override string DisplayName => "AstronautMod";
         public override string Author => "A Future star";
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.9.3";
+        public override string ModVersion => "3.9.4";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -117,6 +117,9 @@ namespace AstronautMod
             CleanupModSubscriptions();
             DestroyPersistentObjects();
             DestroyOrphanObjects();
+            // 重载会销毁设置对象 EnsureModSettings 只在 Early_Load 跑过
+            // 不重建的话 ModSettings.main 变成已销毁组件：设置行失灵、面板开关失效
+            EnsureModSettings();
 
             SceneHelper.OnHubSceneLoaded += OnHubSceneLoaded;
             SceneHelper.OnBuildSceneLoaded += OnBuildSceneLoaded;
@@ -875,7 +878,7 @@ namespace AstronautMod
         }
 
         // 创建并加载模组设置（落到游戏设置文件夹，与 ModsSettings / KeybindingsPC 同机制）
-        private static void EnsureModSettings()
+        internal static void EnsureModSettings()
         {
             if (ModSettings.main != null) return;
             GameObject go = new GameObject("AstronautModSettings");

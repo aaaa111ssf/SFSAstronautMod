@@ -299,16 +299,25 @@ namespace AstronautMod
 
                 if (KeyPressed(teleportModifier, teleportKey))
                 {
-                    bool cheatsAllowed = false;
-                    try { cheatsAllowed = Base.worldBase != null && Base.worldBase.AllowsCheats; }
-                    catch { }
-
-                    if (!cheatsAllowed)
-                        Hint("Teleport requires cheats to be enabled in this world.");
-                    else if (TeleportMenu.main != null)
-                        TeleportMenu.main.OpenFromCheats();
+                    // 传送同样仅限 EVA（此前漏判，控制火箭时按 G 也能打开传送菜单）
+                    if (!isEva)
+                    {
+                        Hint("Teleport only works during EVA. (Press: " +
+                            ModSettings.ComboName(teleportModifier, teleportKey) + ")");
+                    }
                     else
-                        Hint("Teleport menu unavailable.");
+                    {
+                        bool cheatsAllowed = false;
+                        try { cheatsAllowed = Base.worldBase != null && Base.worldBase.AllowsCheats; }
+                        catch { }
+
+                        if (!cheatsAllowed)
+                            Hint("Teleport requires cheats to be enabled in this world.");
+                        else if (TeleportMenu.main != null)
+                            TeleportMenu.main.OpenFromCheats();
+                        else
+                            Hint("Teleport menu unavailable.");
+                    }
                 }
             }
             catch (Exception e)

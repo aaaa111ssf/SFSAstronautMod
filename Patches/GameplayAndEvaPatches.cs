@@ -614,27 +614,32 @@ namespace AstronautMod
                     : null;
                 bool isEVA = liveEva != null;
 
-                // 遥测面板总开关（可在游戏设置里关闭）
-                bool showDash = ModSettings.main != null && ModSettings.main.settings != null
-                    && ModSettings.main.settings.showTelemetryDashboard;
+                // 遥测面板总开关（可在游戏设置里关闭）设置未就绪时默认显示；
+                // main 意外为空（重载时序竞态）时自愈重建设置对象
+                if (ModSettings.main == null)
+                    AstronautModMain.EnsureModSettings();
+                bool showDash = ModSettings.main == null || ModSettings.main.settings == null ||
+                    ModSettings.main.settings.showTelemetryDashboard;
 
-                if (isEVA && showDash && dashboardLabel == null)
+                bool panelAlive = dashboardHolder != null && dashboardLabel != null &&
+                    dashboardLabel.gameObject != null;
+
+                if (isEVA && showDash && !panelAlive)
                 {
+                    DestroyDashboard();
                     dashboardHolder = ModGUIBuilder.CreateHolder(
                         ModGUIBuilder.SceneToAttach.CurrentScene, "AstroUnlocker_Dashboard");
                     dashboardLabel = ModGUIBuilder.CreateLabel(
-                        dashboardHolder.transform, 280, 80,
-                        -450, 300,
+                        dashboardHolder.transform, 340, 110,
+                        -470, 240,
                         "");
                     dashboardLabel.Color = new Color(1f, 1f, 1f, 0.9f);
-                    dashboardLabel.FontSize = 14;
+                    dashboardLabel.FontSize = 15;
+                    updateTimer = 1f; // 立刻在下一 tick 填充数据
                 }
-                else if ((!isEVA || !showDash) && dashboardLabel != null)
+                else if ((!isEVA || !showDash) && dashboardHolder != null)
                 {
-                    if (dashboardHolder != null)
-                        UnityEngine.Object.Destroy(dashboardHolder);
-                    dashboardLabel = null;
-                    dashboardHolder = null;
+                    DestroyDashboard();
                 }
 
                 if (isEVA && showDash && dashboardLabel != null && liveEva != null)
@@ -654,6 +659,14 @@ namespace AstronautMod
             }
         }
 
+        private static void DestroyDashboard()
+        {
+            if (dashboardHolder != null)
+                UnityEngine.Object.Destroy(dashboardHolder);
+            dashboardHolder = null;
+            dashboardLabel = null;
+        }
+
         private static void UpdateTelemetry(Astronaut_EVA eva, SFS.UI.ModGUI.Label label)
         {
             try
@@ -662,9 +675,19 @@ namespace AstronautMod
                 double speed = globalVel.magnitude;
 
                 double altitude = 0.0;
+                double vertical = 0.0;
+                string planetName = "";
                 if (eva.location != null && eva.location.planet.Value != null)
                 {
-                    altitude = eva.location.position.Value.magnitude - eva.location.planet.Value.Radius;
+                    var planet = eva.location.planet.Value;
+                    Double2 pos = eva.location.position.Value;
+                    Double2 vel = eva.location.velocity.Value;
+                    double r = pos.magnitude;
+                    altitude = r - planet.Radius;
+                    // 垂直速度 = 本地速度在径向单位向量上的投影（正=上升 负=下降）
+                    if (r > 1e-6)
+                        vertical = (vel.x * pos.x + vel.y * pos.y) / r;
+                    planetName = planet.codeName ?? "";
                 }
 
                 double fuel = eva.resources?.fuelPercent?.Value ?? 0.0;
@@ -673,7 +696,8 @@ namespace AstronautMod
                     ? (altitude / 1000.0).ToString("F2") + " km"
                     : altitude.ToString("F1") + " m";
 
-                label.Text = $"Speed: {speed:F1} m/s\n" +
+                label.Text = $"Planet: {planetName}\n" +
+                             $"Speed: {speed:F1} m/s   Vert: {vertical:+0.0;-0.0} m/s\n" +
                              $"Altitude: {altStr}\n" +
                              $"Fuel: {fuel * 100:F0}%";
             }
