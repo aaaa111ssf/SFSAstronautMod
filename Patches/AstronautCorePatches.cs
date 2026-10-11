@@ -180,7 +180,7 @@ namespace AstronautMod
         }
     }
 
-    /// 世界被拆除并重建的时间窗口（发射 / 回退 / 读档）。
+    // 世界被拆除并重建的时间窗口（发射 / 回退 / 读档）。
     public static class WorldRebuild
     {
         static bool active;
@@ -537,6 +537,8 @@ namespace AstronautMod
     {
         static void Prefix()
         {
+            RocketDestruction.Set(RocketDestruction.KindType.ReturnToHub);
+            CrewDiagnostics.Event("exit-to-build", "-", "clearing saved crew cache");
             AstronautModMain.ClearSavedAstronauts("ExitToBuild");
         }
     }
@@ -546,6 +548,10 @@ namespace AstronautMod
     {
         static void Prefix()
         {
+            // 回 Hub：乘员应回到「待命」，不能判死亡
+            RocketDestruction.Set(RocketDestruction.KindType.ReturnToHub);
+            CrewDiagnostics.Event("exit-to-hub", "-", "clearing saved crew cache");
+            CrewDiagnostics.DumpRoster("ExitToHub");
             AstronautModMain.ClearSavedAstronauts("ExitToHub");
         }
     }
@@ -555,7 +561,226 @@ namespace AstronautMod
     {
         static void Prefix()
         {
+            RocketDestruction.Set(RocketDestruction.KindType.ReturnToHub);
             AstronautModMain.ClearSavedAstronauts("ExitToMainMenu");
+        }
+    }
+
+    // 清空世界（GameManager.ClearWorld）：退出到 Hub 时销毁所有火箭。 原生会先对每个座位 seat.Exit() 再销毁火箭 —— seat.Exit() 已把乘员从名册解绑， 
+    // 所以这里只标记分类，供后续 Seat.OnDestroy 判断。
+    [HarmonyPatch(typeof(GameManager), "ClearWorld")]
+    public class Patch_GameManager_ClearWorld_MarkKind
+    {
+        static void Prefix()
+        {
+            RocketDestruction.Set(RocketDestruction.KindType.ReturnToHub);
+        }
+    }
+
+    // 清理发射台（GameManager.ClearDebris 内联在 MenuGenerator 的确认回调里， 走的是 GameManager 里定义的局部函数，通过菜单字符串定位不现实）—— 改用火
+    // 箭数量判断：发射后世界重建窗口外批量销毁的非玩家火箭 = 发射台清场。
+    [HarmonyPatch(typeof(Rocket), "OnEnable")]
+    public class Patch_Rocket_OnEnable_TrackKind
+    {
+        static void Postfix(Rocket __instance)
+        {
+            // 火箭重进世界（回退/读档后重新生成）属于重建，不该判坠毁
+            if (WorldRebuild.Active)
+                RocketDestruction.Set(RocketDestruction.KindType.WorldRebuild);
+        }
+    }
+
+    // 统一的火箭销毁分类 + 「主动摧毁且有乘员」时弹出确认框。
+// 场景对照：
+//   ①新建火箭        → BuildState.Clear 清缓存，乘员不跟回
+//   ②回退/重发射/读档 → WorldRebuild 窗口内，乘员跟回（座位数据随部件落盘）
+//   ③发射台清场      → 发射时销毁蓝图中未用的火箭（非坠毁）→ 回 Hub 待命
+//   ④回收火箭        → EndMissionMenu.Complete → 回 Hub 待命
+//   ⑤摧毁火箭（有人）→ 弹确认框：杀死 / 保留（取消销毁）
+    [HarmonyPatch(typeof(RocketManager), "DestroyRocket")]
+    public class Patch_RocketManager_DestroyRocket_Classify
+    {
+        // 防止同一帧多次弹框
+        private static bool asking;
+
+        static bool Prefix(Rocket rocket, DestructionReason reason)
+        {
+            // 重建窗口内不分流；已明确分类的也不覆盖
+            if (WorldRebuild.Active) return true;
+            if (RocketDestruction.Kind != RocketDestruction.KindType.Unknown) return true;
+
+            switch (reason)
+            {
+                case DestructionReason.TerrainCollision:
+                case DestructionReason.WaterCollision:
+                case DestructionReason.RocketCollision:
+                case DestructionReason.Overheat:
+                    RocketDestruction.Set(RocketDestruction.KindType.Crash);
+                    CrewDiagnostics.Event("rocket-crash", "-", "reason=" + reason);
+                    break;
+                default:
+                    // Intentional：区分不了是"回收/发射台"还是"玩家主动摧毁"，
+                    // 两者都应回 Hub 待命，所以归到 PlayerIntentional
+                    RocketDestruction.Set(RocketDestruction.KindType.PlayerIntentional);
+                    break;
+            }
+
+            // ⑤ 玩家主动摧毁且火箭上有乘员 → 询问是否杀死
+            if (reason == DestructionReason.Intentional &&
+                RocketDestruction.Kind == RocketDestruction.KindType.PlayerIntentional)
+            {
+                List<string> crew = CollectCrew(rocket);
+                if (crew.Count > 0)
+                {
+                    AskKillCrew(rocket, crew);
+                    return false;   // 先拦住，等玩家选择再决定
+                }
+            }
+            return true;
+        }
+
+        static void Postfix(Rocket rocket)
+        {
+            // 销毁完成，重置分类，避免影响下一枚火箭
+            RocketDestruction.Reset();
+            asking = false;
+        }
+
+        static List<string> CollectCrew(Rocket rocket)
+        {
+            var names = new List<string>();
+            try
+            {
+                if (rocket?.partHolder == null) return names;
+                foreach (CrewModule crew in rocket.partHolder.GetModules<CrewModule>())
+                {
+                    if (crew?.seats == null) continue;
+                    foreach (CrewModule.Seat seat in crew.seats)
+                    {
+                        string n = seat?.astronaut?.Value;
+                        if (!string.IsNullOrEmpty(n) && !names.Contains(n)) names.Add(n);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Collect rocket crew", e);
+            }
+            return names;
+        }
+
+        static void AskKillCrew(Rocket rocket, List<string> crew)
+        {
+            if (asking) return;
+            asking = true;
+
+            string who = crew.Count == 1 ? crew[0] : string.Join(", ", crew);
+            try
+            {
+                MenuGenerator.OpenConfirmation(
+                    CloseMode.Stack,
+                    () => "This rocket has " + crew.Count + " astronaut(s) aboard: " + who +
+                          "\n\nDestroying the rocket will kill them. Kill or recover?",
+                    () => "Kill them",
+                    () =>
+                    {
+                        ModLogger.Info("[Crew] player chose KILL: " + string.Join(", ", crew));
+                        RocketDestruction.Set(RocketDestruction.KindType.Crash);
+                        asking = false;
+                        RocketManager.DestroyRocket(rocket, DestructionReason.Intentional);
+                    });
+
+                // 第二个选项：改成"取消销毁"更安全，这里单独开一个菜单实现
+                SizeSyncerBuilder.Carrier keepCarrier;
+                MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Stack,
+                    new SizeSyncerBuilder(out keepCarrier).HorizontalMode(SizeMode.MaxChildSize),
+                    ButtonBuilder.CreateButton(keepCarrier,
+                        () => "Keep them safe (do not destroy)",
+                        () =>
+                        {
+                            ModLogger.Info("[Crew] player chose KEEP SAFE, destroy cancelled");
+                            RocketDestruction.Reset();
+                            asking = false;
+                        },
+                        CloseMode.Stack));
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Ask kill crew", e);
+                asking = false;
+            }
+        }
+    }
+
+    // 回收火箭 —— EndMissionMenu.Complete() 里 recoveryTarget is Rocket 的分支 会 DestroyRocket(recoveryTarget, Int
+    // entional)。回收应让乘员回 Hub 待命而非死亡。
+    [HarmonyPatch(typeof(EndMissionMenu), "Complete")]
+    public class Patch_EndMissionMenu_Complete_MarkKind
+    {
+        static void Prefix()
+        {
+            RocketDestruction.Set(RocketDestruction.KindType.ReturnToHub);
+            CrewDiagnostics.Event("recover-rocket", "-", "EndMissionMenu.Complete -> crew to Hub");
+        }
+    }
+
+    // 建造页点「New Rocket」实际执行的是 BuildState.Clear(applyUndo:false)。
+//
+// ⚠️ 必须用 Postfix，不能用 Prefix —— 这是踩过的坑：
+// Clear 内部会 DestroyParts → 拆掉部件 → 触发模组的 RemoveCrewModule，
+// 而它会把拆下来的乘员名写回 savedAstronauts（供旧存档兜底用）。
+// 若在 Prefix 清空缓存，Clear 内部又把它填回去，新火箭里同名部件的空座位
+// 依然会被旧乘员填上（表现为「新建火箭后宇航员跟着一块回来」）。
+// 必须在 Clear 彻底跑完之后再清，才能真正清掉。
+//
+// 注意：不要再加 BuildManager.Awake 之类的补丁 —— BuildManager 没有 Awake 方法，
+// HarmonyPatch 指向不存在的方法会在 PatchAll 时抛异常，直接让整个模组加载失败。
+// 兜底改用 Start（BuildManager 确实有 Start，见其场景初始化）。
+    [HarmonyPatch(typeof(BuildState), "Clear")]
+    public class Patch_BuildState_Clear_ClearSaved
+    {
+        static void Prefix()
+        {
+            // Clear 内部会 DestroyParts → RemoveCrewModule，那里会暂存乘员名。
+            // 先置抑制标志，让它这一轮不要把旧乘员写回缓存。
+            AstronautModMain.SuppressCrewStash = true;
+        }
+
+        static void Postfix()
+        {
+            CrewDiagnostics.Event("new-rocket", "-", "BuildState.Clear -> astronauts stay in Hub");
+            AstronautModMain.SuppressCrewStash = false;
+            // 双保险：Clear 已全部跑完（部件都销毁了），此刻清缓存才不会被回填
+            AstronautModMain.ClearSavedAstronauts("BuildState.Clear (New Rocket)");
+
+            // 关键：座位名绑定在部件的可保存变量上（InjectCrewModule 里
+            // seat.astronaut = Bind(part, SeatVariable(index))），新建火箭后新部件
+            // 实例会带着这些变量，InjectCrewModule 的 ReadSeat 就会把旧乘员填回座位。
+            // 光清 savedAstronauts 不够，必须一并清掉部件上的持久化坐席数据。
+            int cleared = AstronautModMain.ClearAllSeatAssignments();
+            if (cleared > 0)
+                CrewDiagnostics.Event("new-rocket", "-",
+                    "cleared seat assignments on " + cleared + " part(s)");
+
+            CrewDiagnostics.DumpRoster("New Rocket");
+        }
+    }
+
+    // 兜底：若某条路径绕过 BuildState.Clear（例如直接读档替换网格）， 进入建造场景时也清一次。BuildManager.Start 每次进入建造页都会跑。
+    [HarmonyPatch(typeof(BuildManager), "Start")]
+    public class Patch_BuildManager_Start_ClearSaved
+    {
+        static void Postfix()
+        {
+            try
+            {
+                if (BuildManager.main != null)
+                    AstronautModMain.ClearSavedAstronauts("BuildManager.Start");
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Build scene crew cache reset", e);
+            }
         }
     }
 
@@ -592,9 +817,32 @@ namespace AstronautMod
     {
         static bool Prefix(Astronaut_EVA __instance, float startTime)
         {
+            // 碰撞承受倍率 > 1 时，低于「原生致命速度 × 倍率」的坠落不再死亡，只摔个踉跄
+            // 原生判定：局部速度 x>30 或 -y>15 判死（OnFixedUpdate 内联，无法直接改阈值）
+            try
+            {
+                float tolerance = AstronautTuning.ImpactTolerance;
+                if (tolerance > 1.0001f && __instance != null && __instance.rb2d != null &&
+                    !SandboxSettings.main.settings.unbreakableParts)
+                {
+                    double speed = WorldView.ToGlobalVelocity(__instance.rb2d.linearVelocity).magnitude;
+                    if (speed <= 15.0 * tolerance)
+                    {
+                        __instance.rb2d.linearVelocity = Vector2.zero;
+                        __instance.rb2d.angularVelocity = 0f;
+                        __instance.SetRagdoll(enabled: true);
+                        return false;   // 免死
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("EVA impact tolerance", e);
+            }
+
             if (AstronautManager.main == null || AstronautManager.main.fadeToBlack == null)
             {
-                
+
                 try
                 {
                     __instance.astronaut.alive = false;
@@ -784,6 +1032,14 @@ namespace AstronautMod
         }
     }
 
+    // 火箭被销毁时对乘员的处理。
+// 原生行为：CrewModule.Seat.OnDestroy 会 RemoveCrew 并把 alive=false —— 也就是「舱体没了 = 乘员死亡」，
+// 这与模组想要的「回收/返回发射台 = 回 Hub 待命」冲突。
+// 这里按 RocketDestruction 的分类决定：
+//   WorldRebuild / Revert —— 世界重建（发射、回退、读档）：不动任何状态
+//   ReturnToHub / PadCleanup —— 回 Hub 或清发射台：乘员回到「待命」而非死亡
+//   PlayerIntentional —— 玩家主动摧毁（有确认弹窗）：同样回 Hub 待命
+//   Crash（坠毁/撞击）—— 保持原生：判定死亡
     [HarmonyPatch(typeof(CrewModule.Seat), "OnDestroy")]
     public class Patch_Seat_OnDestroy
     {
@@ -802,39 +1058,85 @@ namespace AstronautMod
 
                 // 该部件是世界重建期间的旧对象 不要改动任何乘员状态
                 if (WorldRebuild.Active)
+                {
+                    CrewDiagnostics.Event("world-rebuild", astronautName, "seat destroyed, state untouched");
                     return false;
+                }
 
                 if (!destroyedSeatAstronauts.Contains(astronautName))
                     destroyedSeatAstronauts.Add(astronautName);
 
-                // 从 crew_Build（建造）或 crew_World（世界）移除
-                if (AstronautState.main != null)
-                {
-                    AstronautState.main.RemoveCrew(astronautName);
+                if (AstronautState.main == null) return false;
 
-                    // 世界场景中舱体销毁即乘员死亡（原游戏行为）
-                    if (GameManager.main != null)
-                    {
-                        var data = AstronautState.main.GetAstronautByName(astronautName);
-                        if (data != null)
-                        {
-                            data.alive = false;
-                            
-                        }
-                        else
-                        {
-                            
-                        }
-                    }
+                // 从 crew_Build（建造）或 crew_World（世界）移除
+                AstronautState.main.RemoveCrew(astronautName);
+
+                if (GameManager.main == null)
+                {
+                    // 不在世界场景（如建造页拆部件）：原生逻辑只是解绑，不算死亡
+                    CrewDiagnostics.Event("build-teardown", astronautName, "seat removed in build scene");
+                    return false;
                 }
 
+                var data = AstronautState.main.GetAstronautByName(astronautName);
+                if (data == null) return false;
+
+                if (RocketDestruction.Kind == RocketDestruction.KindType.Crash)
+                {
+                    // 坠毁/撞击：保持原生，判定死亡
+                    data.alive = false;
+                    CrewDiagnostics.Event("crash-killed", astronautName, "seat destroyed by crash");
+                }
+                else
+                {
+                    // 回收 / 发射台清场 / 玩家主动摧毁：回 Hub 待命
+                    data.alive = true;
+                    CrewDiagnostics.Event("returned-hub", astronautName,
+                        "kind=" + RocketDestruction.Kind);
+                }
                 return false; // 跳过原方法
             }
             catch (Exception e)
             {
-                
+                ModLogger.ErrorOnce("Seat OnDestroy crew handling", e);
                 return true; // 出错时回退到原方法
             }
+        }
+    }
+
+    // 记录"当前火箭是在什么情况下被销毁的"，供 Seat.OnDestroy 判断乘员该死亡还是回 Hub。 由各处销毁入口的补丁设置。
+    public static class RocketDestruction
+    {
+        public enum KindType
+        {
+            Unknown = 0,
+            WorldRebuild,      // 世界重建（发射 / 回退 / 读档）
+            ReturnToHub,       // 退出到 Hub
+            PadCleanup,        // 清理发射台（发射后销毁蓝图中未使用的火箭）
+            PlayerIntentional, // 玩家主动摧毁（确认弹窗后）
+            Crash              // 坠毁 / 撞击
+        }
+
+        static KindType kind = KindType.Unknown;
+
+        public static KindType Kind
+        {
+            get
+            {
+                // 世界重建窗口内一律按重建处理，避免误判为坠毁
+                if (WorldRebuild.Active) return KindType.WorldRebuild;
+                return kind;
+            }
+        }
+
+        public static void Set(KindType k)
+        {
+            kind = k;
+        }
+
+        public static void Reset()
+        {
+            kind = KindType.Unknown;
         }
     }
 
@@ -1349,7 +1651,7 @@ namespace AstronautMod
         }
     }
 
-    /// <summary>读取形如 Bool_Reference 的对象所代表的布尔值。</summary>
+    // 读取形如 Bool_Reference 的对象所代表的布尔值。
     internal static class ReflectionBool
     {
         public static bool Get(object instance, string fieldName)

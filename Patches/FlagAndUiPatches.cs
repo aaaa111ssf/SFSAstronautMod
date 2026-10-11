@@ -238,7 +238,7 @@ namespace AstronautMod
         }
     }
 
-    /// EVA 快捷键处理（替代原“Plant Flag / Teleport”悬浮按钮，按钮已按需求移除）。
+    // EVA 快捷键处理（替代原“Plant Flag / Teleport”悬浮按钮，按钮已按需求移除）。
     public static class EvaKeys
     {
         private static bool wasEva;

@@ -8,14 +8,14 @@ using SFS.World;
 
 namespace AstronautMod
 {
-    /// Per-part persistence for the CrewModule that this mod injects into custom capsules.
+    // 本模组注入到自定义乘员舱的 CrewModule 的部件级持久化。
     public static class CrewPersistence
     {
         public const string CapacityVariable = "AstronautMod_Cap";
         public const string SeatPrefix = "AstronautMod_Seat";
         public const string IdVariable = "AstronautMod_Id";
 
-        /// <summary>True when the given variable name belongs to this mod.</summary>
+        // 变量名是否属于本模组。
         public static bool IsOwnVariable(string name)
         {
             if (string.IsNullOrEmpty(name))
@@ -49,7 +49,7 @@ namespace AstronautMod
 
         // ---------------------------------------------------------------- installation
 
-    /// Patches VariableList&lt;string&gt;.LoadDictionary so that variables belonging to this mod
+    // 给 VariableList<string>.LoadDictionary 打补丁，让本模组的变量
         public static void Install(Harmony harmony)
         {
             try
@@ -87,7 +87,7 @@ namespace AstronautMod
             }
         }
 
-        /// <summary>Harmony prefix for <c>VariableList&lt;string&gt;.LoadDictionary</c>.</summary>
+        // VariableList<string>.LoadDictionary 的 Harmony 前置补丁。
         public static void LoadDictionary_Prefix(object __instance, Dictionary<string, string> inputs)
         {
             try
@@ -137,13 +137,13 @@ namespace AstronautMod
             }
         }
 
-        /// <summary>Creates the variable if needed and returns a reference that is bound to it.</summary>
+        // 按需创建变量，并返回与之绑定的引用。
         public static String_Reference Bind(Part part, string variableName)
         {
             VariableList<string> list = GetList(part);
             if (list == null)
             {
-                // No variables module: fall back to a detached local value like before.
+                // 没有变量模块时退回独立本地值（同原行为）。
                 return new String_Reference();
             }
 
@@ -214,7 +214,7 @@ namespace AstronautMod
             return 0;
         }
 
-        /// <summary>True when this part instance carries a persisted mod configuration.</summary>
+        // 该部件实例是否带有模组持久化配置。
         public static bool HasStoredConfig(Part part)
         {
             if (part == null)
@@ -237,7 +237,45 @@ namespace AstronautMod
             return false;
         }
 
-        /// <summary>Persists capacity and the current seat occupancy of an injected part.</summary>
+        // 清空某个部件上所有已记录的乘员名（座位变量），保留容量设置。 场景：建造页点「New Rocket」后，新部件实例仍可能带着上一枚火箭的乘员名 （座位名绑定在部件的可保存变量上），InjectCrew
+        // Module 的 ReadSeat 会把它们 填回空座位 —— 表现为「新建火箭后宇航员跟着一块回来」。
+        public static int ClearSeatAssignments(Part part)
+        {
+            if (part == null)
+                return 0;
+            try
+            {
+                VariableList<string> list = GetList(part);
+                if (list == null)
+                    return 0;
+
+                int cleared = 0;
+                // 座位数量上限与 SavePartState 的清理范围一致
+                for (int i = 0; i < AstronautModMain.MaxCrewCapacity + 8; i++)
+                {
+                    string variable = SeatVariable(i);
+                    if (!list.Has(variable))
+                    {
+                        // 变量还没建出来，后面的也不会有
+                        if (i > 0 && !list.Has(SeatVariable(0))) break;
+                        continue;
+                    }
+                    if (!string.IsNullOrEmpty(list.GetValue(variable)))
+                    {
+                        Write(part, variable, string.Empty);
+                        cleared++;
+                    }
+                }
+                return cleared;
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Clear seat assignments", e);
+                return 0;
+            }
+        }
+
+        // 持久化已注入部件的容量与当前座位占用。
         public static void SavePartState(Part part, CrewModule crew)
         {
             if (part == null || crew == null)
@@ -258,7 +296,7 @@ namespace AstronautMod
                     Write(part, SeatVariable(i), name ?? string.Empty);
                 }
 
-                // Drop leftovers from a previously larger layout.
+                // 清掉更早更大布局留下的多余变量。
                 for (int i = seats.Length; i < seats.Length + 8; i++)
                 {
                     string variable = SeatVariable(i);
@@ -273,7 +311,7 @@ namespace AstronautMod
             }
         }
 
-        /// <summary>Removes every variable this mod stored on the given part.</summary>
+        // 移除本模组在该部件上存过的全部变量。
         public static void ClearPartState(Part part)
         {
             VariableList<string> list = GetList(part);
@@ -295,7 +333,7 @@ namespace AstronautMod
             }
         }
 
-    /// Writes crew data recovered from an external source (e.g. Custom Save Data) into the part's
+    // 把从外部来源（如 Custom Save Data）恢复的乘员数据写回部件
         public static void Import(Part part, int capacity, IList<string> crew)
         {
             if (part == null)

@@ -108,12 +108,18 @@ namespace AstronautMod
                 Rigidbody2D rigidbody = __instance.rb2d;
                 if (rigidbody == null) return;
 
+                float buoyancyScale = AstronautTuning.WaterBuoyancy;
+                float dragScale = AstronautTuning.WaterDrag;
+                float tolerance = AstronautTuning.ImpactTolerance;
+
                 Double2 globalVelocity = WorldView.ToGlobalVelocity(rigidbody.linearVelocity);
                 Double2 upDirection = position.normalized;
                 double radialVelocity = globalVelocity.x * upDirection.x + globalVelocity.y * upDirection.y;
                 double inwardSpeed = -radialVelocity;
 
-                if (!water.fatalWaterImpactHandled && (inwardSpeed > 15.0 || globalVelocity.magnitude > 30.0))
+                // 致命入水同样受「碰撞承受倍率」影响
+                if (!water.fatalWaterImpactHandled && tolerance <= 1.0001f &&
+                    (inwardSpeed > 15.0 || globalVelocity.magnitude > 30.0))
                 {
                     water.fatalWaterImpactHandled = true;
                     water.isInWater = false;
@@ -126,13 +132,14 @@ namespace AstronautMod
                 }
 
                 float fixedDeltaTime = Time.fixedDeltaTime;
-                float buoyancyAcceleration = submergedRatio * gravity.magnitude * 1.05f;
+                float buoyancyAcceleration = submergedRatio * gravity.magnitude * 1.05f * buoyancyScale;
                 globalVelocity += upDirection * (buoyancyAcceleration * fixedDeltaTime);
 
                 double speed = globalVelocity.magnitude;
-                if (speed > 0.01)
+                if (speed > 0.01 && dragScale > 0f)
                 {
-                    double dragMagnitude = Mathf.Pow((float)speed, 1.2f) * 2.0f * astronautRadius * submergedRatio * fixedDeltaTime;
+                    double dragMagnitude = Mathf.Pow((float)speed, 1.2f) * 2.0f * astronautRadius *
+                        submergedRatio * dragScale * fixedDeltaTime;
                     globalVelocity -= globalVelocity.normalized * Math.Min(dragMagnitude, speed);
                 }
 
@@ -474,7 +481,7 @@ namespace AstronautMod
                 d.timewarpText.Text = WorldTime.main.timewarpSpeed + "x";
         }
 
-        /// <summary>取本地化串冒号后的值段 缺冒号时返回整串（原版此处会数组越界）。</summary>
+        // 取本地化串冒号后的值段 缺冒号时返回整串（原版此处会数组越界）。
         internal static string ValueAfterColon(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";

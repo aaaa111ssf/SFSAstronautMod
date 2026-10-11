@@ -111,10 +111,16 @@ namespace AstronautMod
             // EVA 快捷键（插旗/传送）必须每帧检测 0.5s 定时器会漏按键
             EvaKeys.Update();
 
+            // 向游戏设置的 Mods Settings 注册 Astronaut 页签（UITools 初始化较晚时自动重试）
+            AstronautTuning.TryRegisterSettingsPage();
+
             if (timer >= 0.5f)
             {
                 timer = 0f;
                 AstronautDashboardHelper.Update();
+                // 座椅宇航员贴图：扫描所有 CrewModule 的 astronautModel
+                // （模型可能被 SetActive 开关、部件被重建，必须定时重扫而非只在设置变更时跑一次）
+                SeatAppearance.ApplyAll();
             }
 
             if (PartIconCreator.main != null)
@@ -536,6 +542,10 @@ namespace AstronautMod
                 elements.Add(ButtonBuilder.CreateButton(carrier,
                     () => "Customize Flag",
                     () => FlagCustomization.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Customize Texture",
+                    () => CrewAppearance.OpenStyleMenu(name, () => UpdateDriver.ScheduleMenuRefresh()),
                     CloseMode.Current));
                 elements.Add(ButtonBuilder.CreateButton(carrier,
                     () => "Discharge",

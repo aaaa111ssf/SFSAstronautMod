@@ -33,9 +33,9 @@ namespace AstronautMod
 
         public override string ModNameID => "astronaut_mod";
         public override string DisplayName => "AstronautMod";
-        public override string Author => "A Future star";
+        public override string Author => "A Future star";// 世界上最帅的男人
         public override string MinimumGameVersionNecessary => "1.6";
-        public override string ModVersion => "3.9.4";
+        public override string ModVersion => "3.9.5";
         public override string Description => "Enables the native astronaut/crew system on PC.";
 
         public override void Early_Load()
@@ -556,10 +556,10 @@ namespace AstronautMod
                     new Dictionary<string, HashSet<long>>();
         }
 
-    /// 本局内被解雇（Discharge）的宇航员。用于阻止跨场景重载时把他们"复活"回来。
+    // 本局内被解雇（Discharge）的宇航员。用于阻止跨场景重载时把他们"复活"回来。
         public static readonly HashSet<string> DischargedAstronauts = new HashSet<string>();
 
-    /// 直接把宇航员名册写进 World/Persistent/Astronauts.txt。
+    // 直接把宇航员名册写进 World/Persistent/Astronauts.txt。
         public static void SaveAstronautRosterToDisk()
         {
             try
@@ -601,7 +601,7 @@ namespace AstronautMod
             }
         }
 
-    /// 场景切换时磁盘/缓存里的名册可能还是旧的（异步保存、DevSettings 跳过写入等）。
+    // 场景切换时磁盘/缓存里的名册可能还是旧的（异步保存、DevSettings 跳过写入等）。
         private static void MergeMissingAstronauts(WorldSave.Astronauts loaded)
         {
             try
@@ -843,7 +843,7 @@ namespace AstronautMod
         public static Dictionary<string, bool> evaConfig = new Dictionary<string, bool>();
         public static Dictionary<string, int> evaCrewCapacities = new Dictionary<string, int>();
         private const int DefaultCrewCapacity = 1;
-        private const int MaxCrewCapacity = 5;
+        public const int MaxCrewCapacity = 5;
         // 配置现由 ModSettings（游戏设置文件夹下的 AstronautModSettings.json）持有
         public static bool allowUncrewedControl
         {
@@ -925,6 +925,9 @@ namespace AstronautMod
 
         // 关闭 EVA 时暂存乘员 开启时恢复
         public static Dictionary<string, List<string>> savedAstronauts = new Dictionary<string, List<string>>();
+
+        // 新建火箭期间为 true：抑制 RemoveCrewModule 把乘员名暂存回 savedAstronauts。 由 BuildState.Clear 的补丁设置。
+        public static bool SuppressCrewStash;
 
         [Serializable]
         class EvaConfigEntry { public string key; public bool value; public int crewCapacity; }
@@ -1042,7 +1045,7 @@ namespace AstronautMod
             evaCrewCapacities[partName] = ClampCrewCapacity(capacity);
         }
 
-    /// Applies a new crew capacity to a concrete part and stores it on that part instance, so it is
+    // 把新的乘员容量应用到具体部件并存到该实例上，使其
         public static void SetCrewCapacity(Part part, int capacity)
         {
             if (part == null) return;
@@ -1051,7 +1054,7 @@ namespace AstronautMod
             CrewPersistence.Write(part, CrewPersistence.CapacityVariable, clamped.ToString());
         }
 
-    /// Re-reads the persisted configuration of a part and rebuilds its injected CrewModule.
+    // 重新读取部件的持久化配置并重建注入的 CrewModule。
         public static void ReimportCrewFromVariables(Part part)
         {
             if (part == null) return;
@@ -1454,9 +1457,36 @@ namespace AstronautMod
             return new Vector2(0f, 0.5f); // 默认回退
         }
 
-        public static void RemoveCrewModule(Part part)
+        // 移除注入的 CrewModule。
+// 移除前会把座位上的乘员名暂存进 savedAstronauts（部件名 → 乘员名），作为旧存档的兜底恢复数据。
+// 但在「建造页新建火箭」时不能暂存：BuildState.Clear 内部会 DestroyParts 触发本方法，
+// 若此时写回缓存，新火箭里同名部件的空座位就会被旧乘员填上（宇航员跟着新火箭回来）。
+// 因此新建火箭期间由 SuppressCrewStash 抑制暂存，并配合 BuildState.Clear 的 Postfix 双保险清空缓存。
+public static void RemoveCrewModule(Part part)
         {
             RemoveCrewModule(part, keepPersistedData: false);
+        }
+
+        // 清空建造场景里所有部件上持久化的乘员名，返回被清理的部件数。
+        // 用于「建造页新建火箭」：座位名绑定在部件的可保存变量上（InjectCrewModule 里
+        // seat.astronaut = Bind(part, SeatVariable(index))），新火箭的部件实例若带着这些变量，
+        // InjectCrewModule 的 ReadSeat 就会把旧乘员填回空座位。清 savedAstronauts 不够，必须连部件变量一起清。
+        public static int ClearAllSeatAssignments()
+        {
+            int cleared = 0;
+            try
+            {
+                foreach (Part part in UnityEngine.Object.FindObjectsOfType<Part>(true))
+                {
+                    if (part == null) continue;
+                    if (CrewPersistence.ClearSeatAssignments(part) > 0) cleared++;
+                }
+            }
+            catch (Exception e)
+            {
+                ModLogger.ErrorOnce("Clear all seat assignments", e);
+            }
+            return cleared;
         }
 
         public static void RemoveCrewModule(Part part, bool keepPersistedData)
@@ -1471,8 +1501,8 @@ namespace AstronautMod
                 CrewModule[] crews = part.GetComponentsInChildren<CrewModule>(true);
                 foreach (var crew in crews)
                 {
-                    // 移除前暂存乘员名
-                    if (crew.seats != null)
+                    // 移除前暂存乘员名（新建火箭时跳过，否则旧乘员会被填进新火箭）
+                    if (crew.seats != null && !SuppressCrewStash)
                     {
                         var savedList = new List<string>();
                         foreach (var seat in crew.seats)

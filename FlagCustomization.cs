@@ -26,13 +26,19 @@ namespace AstronautMod
         {
             public string colorHex = "#FFFFFF";
             public string imageFile = "";
+            public string poleColorHex = "#141414";   // 旗杆颜色
+            public float poleWidthScale = 1f;         // 旗杆粗细 0.4~2
+            public float poleHeightScale = 1f;        // 旗杆高度 0.4~1.6
 
             public FlagStyle Clone()
             {
                 return new FlagStyle
                 {
                     colorHex = colorHex ?? "#FFFFFF",
-                    imageFile = imageFile ?? ""
+                    imageFile = imageFile ?? "",
+                    poleColorHex = poleColorHex ?? "#141414",
+                    poleWidthScale = poleWidthScale,
+                    poleHeightScale = poleHeightScale
                 };
             }
 
@@ -83,6 +89,14 @@ namespace AstronautMod
         private static readonly Dictionary<int, SpriteRenderer> poleRenderers =
             new Dictionary<int, SpriteRenderer>();
         private static Sprite flagFaceMaskSprite;
+
+        // 旗杆档位表（菜单循环切换）
+        private static readonly string[] PoleColorNames = { "Black", "Gray", "Brown", "Gold", "White" };
+        private static readonly string[] PoleColorHexes = { "#141414", "#73737a", "#734d29", "#d9ad40", "#ebebeb" };
+        private static readonly float[] PoleWidthPresets = { 0.6f, 1f, 1.5f };
+        private static readonly string[] PoleWidthNames = { "Narrow", "Normal", "Wide" };
+        private static readonly float[] PoleHeightPresets = { 0.7f, 1f, 1.3f };
+        private static readonly string[] PoleHeightNames = { "Short", "Full", "Tall" };
 
         // 几何日志去重（同一旗子+同一图只记一次）
         private static readonly HashSet<string> geometryLogged = new HashSet<string>();
@@ -246,6 +260,25 @@ namespace AstronautMod
                     onChanged?.Invoke();
                 },
                 CloseMode.Current));
+
+            // 新版旗帜 = 旗杆旗面一整张贴图，旗杆由贴图自带，
+            // 所以颜色/粗细/高度三项只对旧版有意义，新版不再显示。
+            if (!UseWholeFlagTexture())
+            {
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Pole color: " + PoleColorName(current.poleColorHex) + " >",
+                    () => CyclePole(astronautName, onChanged, 0),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Pole width: " + PoleWidthName(current.poleWidthScale) + " >",
+                    () => CyclePole(astronautName, onChanged, 1),
+                    CloseMode.Current));
+                elements.Add(ButtonBuilder.CreateButton(carrier,
+                    () => "Pole height: " + PoleHeightName(current.poleHeightScale) + " >",
+                    () => CyclePole(astronautName, onChanged, 2),
+                    CloseMode.Current));
+            }
+
             elements.Add(ButtonBuilder.CreateButton(carrier,
                 () => "Reset to native flag",
                 () =>
@@ -265,6 +298,55 @@ namespace AstronautMod
                 CloseMode.Current));
 
             MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, elements.ToArray());
+        }
+
+        private static void CyclePole(string astronautName, Action onChanged, int which)
+        {
+            FlagStyle style = GetStyle(astronautName);
+            if (which == 0)
+            {
+                int idx = 0;
+                for (int i = 0; i < PoleColorHexes.Length; i++)
+                    if (string.Equals(PoleColorHexes[i], style.poleColorHex, StringComparison.OrdinalIgnoreCase))
+                        idx = i;
+                style.poleColorHex = PoleColorHexes[(idx + 1) % PoleColorHexes.Length];
+            }
+            else if (which == 1)
+            {
+                style.poleWidthScale = PoleWidthPresets[NextPresetIndex(PoleWidthPresets, style.poleWidthScale)];
+            }
+            else
+            {
+                style.poleHeightScale = PoleHeightPresets[NextPresetIndex(PoleHeightPresets, style.poleHeightScale)];
+            }
+            SetStyle(astronautName, style);
+            onChanged?.Invoke();
+        }
+
+        private static string PoleColorName(string hex)
+        {
+            for (int i = 0; i < PoleColorHexes.Length; i++)
+                if (string.Equals(PoleColorHexes[i], hex, StringComparison.OrdinalIgnoreCase))
+                    return PoleColorNames[i];
+            return PoleColorNames[0];
+        }
+
+        private static string PoleWidthName(float v) =>
+            PoleWidthNames[NextPresetIndex(PoleWidthPresets, v)];
+
+        private static string PoleHeightName(float v) =>
+            PoleHeightNames[NextPresetIndex(PoleHeightPresets, v)];
+
+        private static int NextPresetIndex(float[] presets, float value)
+        {
+            int best = 0;
+            float bestDiff = float.MaxValue;
+            for (int i = 0; i < presets.Length; i++)
+            {
+                float diff = Mathf.Abs(presets[i] - value);
+                if (diff < bestDiff) { bestDiff = diff; best = i; }
+            }
+            return best;
         }
 
         private static void AddColorButton(List<MenuElement> elements, SizeSyncerBuilder.Carrier carrier,
@@ -476,7 +558,21 @@ namespace AstronautMod
             if (customFace != null)
             {
                 renderer.enabled = false;
-                ConfigureArtworkRenderer(renderer, customFace, customTint);
+                if (UseWholeFlagTexture())
+                {
+                    // 新版：整张图（旗杆+旗面）铺满原生旗帜包围盒，不生成独立旗杆/遮罩
+                    RemovePoleRenderer(id);
+                    if (artworkMasks.TryGetValue(id, out SpriteMask staleMask))
+                    {
+                        artworkMasks.Remove(id);
+                        if (staleMask != null) UnityEngine.Object.Destroy(staleMask.gameObject);
+                    }
+                    ConfigureWholeFlagRenderer(renderer, customFace, customTint);
+                }
+                else
+                {
+                    ConfigureArtworkRenderer(renderer, customFace, customTint, style);
+                }
                 return;
             }
 
@@ -500,7 +596,7 @@ namespace AstronautMod
         }
 
         // 布面从旗杆一侧起铺（贴着旗杆），不再生成在旗面包围盒正中
-        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint)
+        private static void ConfigureArtworkRenderer(SpriteRenderer frameRenderer, Sprite image, Color tint, FlagStyle style)
         {
             int id = frameRenderer.GetInstanceID();
             if (!artworkRenderers.TryGetValue(id, out SpriteRenderer artwork) || artwork == null)
@@ -544,7 +640,7 @@ namespace AstronautMod
             ConfigureFaceMask(id, frameRenderer, artwork.sortingOrder, availableWidth,
                 availableHeight, facePosition);
             ConfigureBlackPole(id, frameRenderer, frameBounds, availableHeight,
-                facePosition);
+                facePosition, style);
             artwork.enabled = true;
 
             // 几何日志：旗子 prefab 实际布局未知，同一旗子+同一图只记一次，用于确认数值
@@ -565,14 +661,43 @@ namespace AstronautMod
                 artworkMasks.Remove(frameRendererId);
                 if (mask != null) UnityEngine.Object.Destroy(mask.gameObject);
             }
-            if (poleRenderers.TryGetValue(frameRendererId, out SpriteRenderer pole))
-            {
-                poleRenderers.Remove(frameRendererId);
-                if (pole != null) UnityEngine.Object.Destroy(pole.gameObject);
-            }
+            RemovePoleRenderer(frameRendererId);
             if (!artworkRenderers.TryGetValue(frameRendererId, out SpriteRenderer artwork)) return;
             artworkRenderers.Remove(frameRendererId);
             if (artwork != null) UnityEngine.Object.Destroy(artwork.gameObject);
+        }
+
+        private static void RemovePoleRenderer(int frameRendererId)
+        {
+            if (!poleRenderers.TryGetValue(frameRendererId, out SpriteRenderer pole)) return;
+            poleRenderers.Remove(frameRendererId);
+            if (pole != null) UnityEngine.Object.Destroy(pole.gameObject);
+        }
+
+        // 新版旗帜（旗杆旗面整体贴图）开关。设置页 Flag 子页可切换。
+        public static bool UseWholeFlagTexture()
+        {
+            ModSettings.Data s = ModSettings.main != null ? ModSettings.main.settings : null;
+            return s != null && s.flagTextureVersion == 1;
+        }
+
+        // 旗帜版本切换后重刷所有已插下的旗帜。
+        public static void RefreshAllForVersionChange()
+        {
+            Initialize();
+
+            // 只查一次旗帜列表：旧实现放在循环里反复全场景查找
+            Flag[] flags = UnityEngine.Object.FindObjectsOfType<Flag>(true);
+            foreach (Flag flag in flags)
+            {
+                if (flag == null || flag.location == null) continue;
+                string key = GetPlacementKey(flag.location.Value, flag.direction);
+                if (!placements.TryGetValue(key, out FlagPlacementEntry placement)) continue;
+                if (placement?.style == null) continue;
+
+                if (placement.style.IsCustom()) ApplyStyle(flag, placement.style);
+                else RestoreStyle(flag);
+            }
         }
 
         private static void ConfigureFaceMask(int rendererId, SpriteRenderer frameRenderer,
@@ -597,7 +722,7 @@ namespace AstronautMod
         }
 
         private static void ConfigureBlackPole(int rendererId, SpriteRenderer frameRenderer,
-            Bounds frameBounds, float faceHeight, Vector3 facePosition)
+            Bounds frameBounds, float faceHeight, Vector3 facePosition, FlagStyle style)
         {
             if (!poleRenderers.TryGetValue(rendererId, out SpriteRenderer pole) || pole == null)
             {
@@ -607,17 +732,20 @@ namespace AstronautMod
                 poleRenderers[rendererId] = pole;
             }
 
-            float poleWidth = Mathf.Max(0.015f, frameBounds.size.x * 0.07f);
+            float widthScale = style == null ? 1f : Mathf.Clamp(style.poleWidthScale, 0.4f, 2f);
+            float heightScale = style == null ? 1f : Mathf.Clamp(style.poleHeightScale, 0.4f, 1.6f);
+            float poleWidth = Mathf.Max(0.015f, frameBounds.size.x * 0.07f) * widthScale;
 
             float poleTop = frameBounds.max.y;
             float poleBottom = frameBounds.min.y;
-            float poleHeight = Mathf.Max(0.01f, poleTop - poleBottom);
-            float poleCenterY = (poleBottom + poleTop) * 0.5f;
+            float poleHeight = Mathf.Max(0.01f, (poleTop - poleBottom) * heightScale);
+            // 高度不足时从地面（下缘）向上长
+            float poleCenterY = poleBottom + poleHeight * 0.5f;
             float poleCenterX = facePosition.x - (frameBounds.size.x * 0.49f) +
                 poleWidth * 0.55f;
 
             pole.sprite = GetFlagFaceMaskSprite();
-            pole.color = Color.black;
+            pole.color = style == null ? Color.black : ParseColor(style.poleColorHex, Color.black);
             pole.sortingLayerID = frameRenderer.sortingLayerID;
             pole.sortingOrder = frameRenderer.sortingOrder + 1;
             pole.maskInteraction = SpriteMaskInteraction.None;
@@ -679,6 +807,40 @@ namespace AstronautMod
                     return Math.Abs(bounds.size.x * bounds.size.y);
                 })
                 .FirstOrDefault();
+        }
+
+        // 新版旗帜：旗杆 + 旗面作为一整张贴图，铺满原生旗帜的整个包围盒。 与旧版的区别是不再按「旗面区域 + 单独旗杆」拼装，也不再套遮罩。
+        private static void ConfigureWholeFlagRenderer(SpriteRenderer frameRenderer,
+            Sprite image, Color tint)
+        {
+            int id = frameRenderer.GetInstanceID();
+            if (!artworkRenderers.TryGetValue(id, out SpriteRenderer whole) || whole == null)
+            {
+                GameObject go = new GameObject("AstronautMod_FlagWhole");
+                go.transform.SetParent(frameRenderer.transform, false);
+                whole = go.AddComponent<SpriteRenderer>();
+                artworkRenderers[id] = whole;
+            }
+
+            whole.sprite = image;
+            whole.color = tint;
+            whole.sortingLayerID = frameRenderer.sortingLayerID;
+            whole.sortingOrder = frameRenderer.sortingOrder + 2;
+            whole.maskInteraction = SpriteMaskInteraction.None;
+
+            // 铺满原生旗帜包围盒（保持长宽比，避免细长图被拉变形）
+            Bounds frameBounds = frameRenderer.sprite != null
+                ? frameRenderer.sprite.bounds
+                : new Bounds(Vector3.zero, Vector3.one);
+            float imageWidth = Mathf.Max(0.0001f, image.bounds.size.x);
+            float imageHeight = Mathf.Max(0.0001f, image.bounds.size.y);
+            float uniformScale = Mathf.Min(frameBounds.size.x / imageWidth,
+                frameBounds.size.y / imageHeight);
+
+            whole.transform.localPosition = frameBounds.center;
+            whole.transform.localScale = new Vector3(
+                imageWidth * uniformScale, imageHeight * uniformScale, 1f);
+            whole.enabled = true;
         }
 
         private static Sprite LoadCustomSprite(string imageFile)

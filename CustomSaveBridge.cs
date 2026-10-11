@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace AstronautMod
 {
-    /// Optional bridge to the "Custom Save Data" dependency mod.
+    // 对接可选依赖模组 Custom Save Data 的桥接层。
     public static class CustomSaveBridge
     {
         // 实例标识复用 CrewPersistence 的命名 保证被一视同仁地持久化
@@ -40,13 +40,13 @@ namespace AstronautMod
         // 反射缓存（订阅成功时初始化）
         static MethodInfo bpAdd, bpRemove, bpGetGeneric, wsAdd, wsRemove, wsGetGeneric;
 
-        /// <summary>Whether the Custom Save Data dependency is usable right now.</summary>
+        // 当前 Custom Save Data 依赖是否可用。
         public static bool Available
         {
             get { return subscribed; }
         }
 
-        /// <summary>Called every frame; subscribes once the dependency mod has finished loading.</summary>
+        // 每帧调用；依赖模组加载完成后订阅一次。
         public static void Ensure()
         {
             if (subscribed || unavailable)
@@ -162,7 +162,7 @@ namespace AstronautMod
             }
         }
 
-    /// 生成与依赖模组事件签名完全匹配的静态代理委托：
+    // 生成与依赖模组事件签名完全匹配的静态代理委托：
         static Delegate CreateProxy(Type delegateType, MethodInfo handler)
         {
             MethodInfo invoke = delegateType.GetMethod("Invoke");
@@ -191,7 +191,7 @@ namespace AstronautMod
 
         // ---------------------------------------------------------------- identity
 
-        /// <summary>Returns the stable per-part-instance id, creating it on first use.</summary>
+        // 返回部件实例的稳定 id，首次使用时创建。
         static string GetPartId(Part part)
         {
             string existing = CrewPersistence.Read(part, IdVariable);
@@ -237,7 +237,7 @@ namespace AstronautMod
             return snapshot;
         }
 
-        /// <summary>Applies recovered data to parts whose own variables came back empty.</summary>
+        // 把恢复出的数据写回自身变量为空的部件。
         static void ApplySnapshot(IEnumerable<Part> parts, CrewSnapshot snapshot)
         {
             if (snapshot == null || snapshot.parts == null || parts == null)
@@ -268,7 +268,7 @@ namespace AstronautMod
             }
         }
 
-        // ---------------------------------------------------------------- custom data helpers
+        // ---------------------------------------------------------------- 自定义数据辅助方法
 
         static void AddCustomData(object container, string key, CrewSnapshot snapshot)
         {
@@ -407,7 +407,7 @@ namespace AstronautMod
             }
         }
 
-        /// <summary>Called after a world has been rebuilt (launch / revert) as a last-resort recovery.</summary>
+        // 世界重建完成（发射/回退）后的最后兜底恢复。
         public static void RecoverAfterWorldLoad()
         {
             try

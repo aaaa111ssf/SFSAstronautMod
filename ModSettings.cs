@@ -8,14 +8,14 @@ using UnityEngine;
 
 namespace AstronautMod
 {
-    /// 把模组配置放进游戏自带的设置系统（与 ModsSettings / KeybindingsPC 同款机制）。
+    // 把模组配置放进游戏自带的设置系统（与 ModsSettings / KeybindingsPC 同款机制）。
     public class ModSettings : SettingsBase<ModSettings.Data>
     {
         [Serializable]
         public class Data
         {
             // 打开乘员菜单的绑定：修饰键 + 主键
-            // crewMenuModifier: 0=None 1=Shift 2=Ctrl 3=Alt
+            // crewMenuModifier 取值：0=无 1=Shift 2=Ctrl 3=Alt
             public int crewMenuModifier = 3;                 // 默认 Alt
             public KeyCode crewMenuKey = KeyCode.Mouse0;    // 默认左键
             public bool allowUncrewedControl = false;
@@ -27,13 +27,38 @@ namespace AstronautMod
             public KeyCode plantFlagKey = KeyCode.F;        // 默认 F
             public int teleportModifier = 0;
             public KeyCode teleportKey = KeyCode.G;         // 默认 G
+
+            // EVA 宇航员可调参数（AstronautTuning 应用）
+            public float evaModelScale = 1f;      // 模型大小 0.5~2.5
+            public float evaBuoyancy = 1f;        // 重力系数 0(漂浮)~1.5
+            public float evaJumpScale = 1f;       // 跳跃高度 0.2~4
+            public float evaSpeedScale = 1f;      // 移动速度 0.2~4
+            public float evaFuelDrain = 1f;       // 燃料消耗倍率 0~5
+            public bool evaFullFuelOnEVA = true;  // 出舱自动满燃料
+            // 注：原 evaTextureFile 已移除 —— EVA 贴图改为按宇航员配置
+            //（见 CrewAppearance.cs / Hub → Customize Texture）
+
+            // EVA 物理参数（AstronautPhysics 应用）
+            public float evaMass = 0.2f;              // 碰撞强度（刚体质量）0.05~2
+            public float evaCenterOfMass = 1.1f;      // 重心高度 0.2~2
+            public float evaImpactTolerance = 1f;     // 碰撞承受倍率 0.2~3（越高越抗摔）
+            public float evaWaterBuoyancy = 1f;       // 水中浮力 0~3
+            public float evaWaterDrag = 1f;           // 水中阻力 0~3
+
+            // 座椅贴图已改为按宇航员分别保存（见 CrewAppearance.cs / Hub → Customize Texture），
+            // 不再是全局设置；旧的 seatTextureMode / seatTextureWhole 字段已从配置移除。
+
+            // 旗帜外观版本：0=旧版（旗面贴图 + 自动生成旗杆）1=新版（旗杆旗面整体贴图）
+            public int flagTextureVersion = 0;
         }
 
         public static ModSettings main;
 
         protected override string FileName => "AstronautModSettings";
 
-        protected override void OnLoad() { }
+        protected override void OnLoad()
+        {
+        }
 
         // SettingsBase.Save() 为 protected，这里暴露一个公开方法供外部（绑定行 / 属性）调用
         public void SaveSettings()
@@ -83,7 +108,7 @@ namespace AstronautMod
             return ComboName(main.settings.crewMenuModifier, main.settings.crewMenuKey);
         }
 
-        /// <summary>修饰键 + 主键 的显示名（如 "F"、"Alt + G"）。</summary>
+        // 修饰键 + 主键 的显示名（如 "F"、"Alt + G"）。
         public static string ComboName(int modifier, KeyCode key)
         {
             string mod = ModifierName(modifier);
@@ -111,7 +136,7 @@ namespace AstronautMod
         public static readonly int[] TelemetryHzPresets = { 5, 10, 20, 30, 60 };
     }
 
-    /// 自定义按键绑定行：游戏原生 KeybindingsPC.Key 只支持 Ctrl + 键，无法表达 Alt / 鼠标键，
+    // 自定义按键绑定行：游戏原生 KeybindingsPC.Key 只支持 Ctrl + 键，无法表达 Alt / 鼠标键，
     public class CrewMenuKeyBinder : MonoBehaviour
     {
         private ButtonPC button;
@@ -189,7 +214,7 @@ namespace AstronautMod
         }
     }
 
-    /// 通用按键绑定行（捕获 修饰键(Alt/Shift/Ctrl/None) + 主键(含鼠标) 并回调写入任意配置项）。
+    // 通用按键绑定行（捕获 修饰键(Alt/Shift/Ctrl/None) + 主键(含鼠标) 并回调写入任意配置项）。
     public class ModKeyBinder : MonoBehaviour
     {
         private ButtonPC button;
@@ -198,7 +223,7 @@ namespace AstronautMod
         private Action<int, KeyCode> apply;
         private Func<string> display;
 
-        /// <summary>必须在 AddComponent 之后、捕获开始前调用。</summary>
+        // 必须在 AddComponent 之后、捕获开始前调用。
         public void Setup(Action<int, KeyCode> applyBinding, Func<string> displayValue)
         {
             apply = applyBinding;
@@ -269,7 +294,7 @@ namespace AstronautMod
         }
     }
 
-    /// 在游戏设置界面的 Keybindings 列表末尾追加一行 "Open Astronaut Menu" 自定义绑定。
+    // 在游戏设置界面的 Keybindings 列表末尾追加一行 "Open Astronaut Menu" 自定义绑定。
     [HarmonyPatch(typeof(KeybindingsPC), "Awake")]
     public class Patch_KeybindingsPC_Awake
     {

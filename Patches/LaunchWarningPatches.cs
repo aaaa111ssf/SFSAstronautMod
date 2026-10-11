@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace AstronautMod
 {
-    /// Pre-launch check for the "missing astronaut" case, with an English-only warning.
+    // 发射前检查「缺少宇航员」的情况，提示文案仅英文。
     [HarmonyPatch(typeof(BuildManager), "Launch")]
     public class Patch_BuildManager_Launch_MissingAstronautWarning
     {
@@ -92,7 +92,7 @@ namespace AstronautMod
                     "(command pod / probe core). It would launch with no control.\n\n" +
                     "Assign at least one astronaut, or enable \"Allow control without crew\" in Mods Settings."));
 
-                // Continue Anyway: ignore the warning and launch as-is (via the real native Launch)
+                // 仍然继续：忽略警告，照常发射（调用原生 Launch）
                 elements.Add(ButtonBuilder.CreateButton(
                     carrier,
                     () => "Continue Anyway",
@@ -112,7 +112,7 @@ namespace AstronautMod
                     },
                     CloseMode.Current));
 
-                // Cancel: just close the prompt, do not launch
+                // 取消：仅关闭提示，不发射
                 elements.Add(ButtonBuilder.CreateButton(
                     carrier,
                     () => "Cancel",

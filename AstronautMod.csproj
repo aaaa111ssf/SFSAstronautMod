@@ -10,6 +10,8 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <DllDir>/workspace/game_dlls</DllDir>
+    <!-- UITools（模组页依赖）：Mods/UITools/UITools.dll，可用 -p:UIToolsDll=... 覆盖 -->
+    <UIToolsDll Condition="'$(UIToolsDll)'==''">$(DllDir)/../../Mods/UITools/UITools.dll</UIToolsDll>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,10 @@
     <Compile Include="CrewPersistence.cs" />
     <Compile Include="CustomSaveBridge.cs" />
     <Compile Include="ModSettings.cs" />
+    <Compile Include="AstronautTuning.cs" />
+    <Compile Include="SeatAppearance.cs" />
+    <Compile Include="CrewAppearance.cs" />
+    <Compile Include="CrewDiagnostics.cs" />
     <Compile Include="Patches\AstronautCorePatches.cs" />
     <Compile Include="Patches\FlagAndUiPatches.cs" />
     <Compile Include="Patches\RuntimeAndUiHelpers.cs" />
@@ -95,6 +101,11 @@
     </Reference>
     <Reference Include="UnityEngine.JSONSerializeModule">
       <HintPath>$(DllDir)/UnityEngine.JSONSerializeModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- UITools：宇航员参数设置页使用其 CreateClosableWindow / CreateNumberInput（PartEditor 同款） -->
+    <Reference Include="UITools" Condition="Exists('$(UIToolsDll)')">
+      <HintPath>$(UIToolsDll)</HintPath>
       <Private>false</Private>
     </Reference>
     <!--
