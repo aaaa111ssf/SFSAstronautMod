@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using ModLoader;
 using ModLoader.Helpers;
+using Newtonsoft.Json;
 using SFS;
 using SFS.Input;
 using SFS.UI;
@@ -923,7 +924,10 @@ namespace AstronautMod
                 placements.Clear();
                 if (!File.Exists(ConfigPath)) return;
 
-                FlagCustomizationData data = JsonUtility.FromJson<FlagCustomizationData>(
+                // 用 Newtonsoft：JsonUtility 不支持嵌套类（本文件的
+                // FlagStyle / AstronautStyleEntry / FlagPlacementEntry 都定义在类内部），
+                // 用它序列化只会得到 {}，旗帜配置重启即丢。
+                FlagCustomizationData data = JsonConvert.DeserializeObject<FlagCustomizationData>(
                     File.ReadAllText(ConfigPath));
                 if (data?.astronautStyles != null)
                 {
@@ -975,7 +979,9 @@ namespace AstronautMod
                             style = entry.style.Clone()
                         }).ToList()
                 };
-                File.WriteAllText(ConfigPath, JsonUtility.ToJson(data, true));
+                File.WriteAllText(ConfigPath, JsonConvert.SerializeObject(data, Formatting.Indented));
+                ModLogger.Info("Flag config saved: " + data.astronautStyles.Count +
+                    " astronaut(s), " + data.placements.Count + " flag(s)");
             }
             catch { }
         }

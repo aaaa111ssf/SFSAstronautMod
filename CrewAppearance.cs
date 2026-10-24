@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
 using SFS.Input;
 using SFS.UI;
 using SFS.World;
@@ -332,13 +333,25 @@ namespace AstronautMod
                 styles.Clear();
                 if (!File.Exists(ConfigPath)) return;
 
-                ConfigData data = JsonUtility.FromJson<ConfigData>(File.ReadAllText(ConfigPath));
-                if (data?.entries == null) return;
+                // 必须用 Newtonsoft 而不是 JsonUtility：Unity 的 JsonUtility 不支持
+                // 嵌套类（nested type），而 Style/ConfigData 都定义在本类内部，
+                // 用它序列化会得到空对象 {}，重启后配置就全丢了。
+                ConfigData data = JsonConvert.DeserializeObject<ConfigData>(
+                    File.ReadAllText(ConfigPath));
+                if (data?.entries == null)
+                {
+                    ModLogger.Warning("Appearance config present but empty: " + ConfigPath);
+                    return;
+                }
+
+                int loaded = 0;
                 foreach (Style entry in data.entries)
                 {
                     if (entry == null || string.IsNullOrWhiteSpace(entry.astronautName)) continue;
                     styles[entry.astronautName] = entry.Clone();
+                    loaded++;
                 }
+                ModLogger.Info("Appearance config loaded: " + loaded + " astronaut(s)");
             }
             catch (Exception e)
             {
@@ -361,7 +374,8 @@ namespace AstronautMod
                         .Select(s => s.Clone())
                         .ToList()
                 };
-                File.WriteAllText(ConfigPath, JsonUtility.ToJson(data, true));
+                File.WriteAllText(ConfigPath, JsonConvert.SerializeObject(data, Formatting.Indented));
+                ModLogger.Info("Appearance config saved: " + data.entries.Count + " astronaut(s)");
             }
             catch (Exception e)
             {

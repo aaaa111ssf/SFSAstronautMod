@@ -8,6 +8,7 @@ using System.Reflection.Emit;
 using HarmonyLib;
 using ModLoader;
 using ModLoader.Helpers;
+using Newtonsoft.Json;
 using SFS;
 using SFS.Builds;
 using SFS.Career;
@@ -948,7 +949,9 @@ namespace AstronautMod
                 if (File.Exists(path))
                 {
                     string json = File.ReadAllText(path);
-                    var data = JsonUtility.FromJson<EvaConfigData>(json);
+                    // 用 Newtonsoft：JsonUtility 不支持嵌套类，EvaConfigEntry 定义在类内部，
+                    // 用它序列化会丢掉整个 parts 数组（部件启用状态重启即失效）。
+                    var data = JsonConvert.DeserializeObject<EvaConfigData>(json);
                     if (data?.parts != null)
                     {
                         foreach (var entry in data.parts)
@@ -1004,7 +1007,7 @@ namespace AstronautMod
                     }
                 }
 
-                string json = JsonUtility.ToJson(data, true);
+                string json = JsonConvert.SerializeObject(data, Formatting.Indented);
                 File.WriteAllText(path, json);
             }
             catch (Exception e)

@@ -103,6 +103,12 @@
       <HintPath>$(DllDir)/UnityEngine.JSONSerializeModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Newtonsoft.Json：持久化配置用 JsonConvert（Unity 的 JsonUtility 不支持嵌套类，
+         而本模组的数据类都定义在类内部，用 JsonUtility 会序列化出 {}） -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(DllDir)/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- UITools：宇航员参数设置页使用其 CreateClosableWindow / CreateNumberInput（PartEditor 同款） -->
     <Reference Include="UITools" Condition="Exists('$(UIToolsDll)')">
       <HintPath>$(UIToolsDll)</HintPath>
